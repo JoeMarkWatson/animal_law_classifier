@@ -8,7 +8,6 @@ from bs4 import BeautifulSoup
 from urllib.request import Request
 from nltk import word_tokenize
 from nltk.tokenize import sent_tokenize
-import pandas
 from numpy.random import seed
 seed(1)
 import tensorflow
