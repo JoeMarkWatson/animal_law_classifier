@@ -12,14 +12,13 @@ import pandas
 from numpy.random import seed
 seed(1)
 import tensorflow
-from numpy.random import seed
 from tensorflow import set_random_seed
 set_random_seed(1)
 from numpy.random import seed
 import random
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-# some changes #
+
 
 # # # judgment gathering # # #
 
