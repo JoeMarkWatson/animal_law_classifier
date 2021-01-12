@@ -10,7 +10,6 @@ from nltk import word_tokenize
 from nltk.tokenize import sent_tokenize
 from numpy.random import seed
 seed(1)
-
 import tensorflow
 from tensorflow import set_random_seed
 set_random_seed(1)
