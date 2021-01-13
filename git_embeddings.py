@@ -11,9 +11,7 @@ from nltk.tokenize import sent_tokenize
 from numpy.random import seed
 seed(1)
 import tensorflow
-from tensorflow import set_random_seed
-set_random_seed(1)
-from numpy.random import seed
+tensorflow.random.set_seed(1)  # https://stackoverflow.com/questions/58638701/importerror-cannot-import-name-set-random-seed-from-tensorflow-c-users-po
 import random
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
@@ -96,11 +94,21 @@ for jt in dd['judgment_text']:
 
 print(all_mean_embs.shape)
 
+# DATA SAVING POINT BELOW
 #all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/labelled_embeddings8Jan.csv')  # written 08.01.2021
 #y.to_csv('/Users/joewatson/Desktop/LawTech/labelled_labels8Jan.csv')  # written 08.01.2021
+# DATA SAVING POINT ABOVE
 
+# DATA LOADING POINT BELOW
 #all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/labelled_embeddings8Jan.csv')
-#all_mean_embs = all_mean_embs.iloc[:,1:]
+#all_mean_embs = all_mean_embs.iloc[:, 1:]
+#y = pd.read_csv('/Users/joewatson/Desktop/LawTech/labelled_labels8Jan.csv')
+#y = y.iloc[:, 1:]
+#df = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled.csv")
+#df = df[['Case', 'Year', 'Link', 'Classification', 'Sample']]  # remove Index, Explanation and og_sample columns
+#df = df[df['Classification'] >= 0]  # retain labelled judgments only
+#link_dict = df.set_index('Link').T.to_dict('list')
+# DATA LOADING POINT ABOVE
 
 # # # MLing # # #
 
@@ -111,16 +119,13 @@ from keras.wrappers.scikit_learn import KerasClassifier
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.model_selection import KFold
 
-def create_model(learning_rate, activation, shape_number_a, shape_number_b, hidden_layers):  # then add batch size later, leaving no. of layers and layer order constant
+def create_model(learning_rate, activation, shape_number_a):  # then add batch size later, leaving no. of layers and layer order constant
     opt = Adam(lr=learning_rate)  # create an Adam optimizer with the given learning rate
 
     model = Sequential()
+
     model.add(Dense(shape_number_a, input_shape=(512,), activation=activation))  # create input layer
-
-    for i in range(hidden_layers):
-        if shape_number_a >= shape_number_b:
-            model.add(Dense(shape_number_b, activation=activation))
-
+    # this is a good way of doing this if you want to trial multiple layers: https://datagraphi.com/blog/post/2019/12/17/how-to-find-the-optimum-number-of-hidden-layers-and-nodes-in-a-neural-network-model
     model.add(Dense(1, activation='sigmoid'))  # create output layer
 
     model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['accuracy'])  # compile model with optimizer, loss, and metrics
@@ -131,36 +136,117 @@ def create_model(learning_rate, activation, shape_number_a, shape_number_b, hidd
 model = KerasClassifier(build_fn=create_model)
 
 # Define the parameters to try out
-params = {'activation': ['relu', 'tanh'], 'batch_size': [1, 5, 10],
-          'epochs': [20, 50, 100, 200], 'learning_rate': [0.1, 0.01, 0.001], 'shape_number_a': [256, 128, 64, 32],
-          'shape_number_b': [256, 128, 64, 32], 'hidden_layers': [1, 2]}  # other optimisers available, with adam by far most common  # https://keras.io/api/optimizers/
+params = {'activation': ['relu'], 'batch_size': [1, 5, 10],
+          'epochs': [20, 50, 100, 200], 'learning_rate': [0.1, 0.01, 0.001], 'shape_number_a': [256, 128, 64, 32]}
+         # other optimisers available, with adam by far most common  # https://keras.io/api/optimizers/
 
-# Create a randomize search cv object passing in the parameters to try
-seed(1)  # from numpy
-tensorflow.random.set_seed(1)  # from tf, but might not be reqd
+np.random.seed(1)
+seed(1)  # from numpy again I think so poss duplicating
+tensorflow.random.set_seed(1)  # from tf
 
-all_mean_embs = pd.concat([all_mean_embs, dd['link']], axis=1)  # adding link onto end of all_mean_embs for later merging
+all_mean_embs = pd.concat([all_mean_embs, df['Link'].reset_index(drop=True)], axis=1)  # adding link onto end of all_mean_embs for later merging
+# in the above line, dd['link'] def worked, but was changed to df['Link'].reset_index(drop=True) for quicker loading
 
 X_train, X_test, y_train, y_test = train_test_split(all_mean_embs, y, test_size=0.2, random_state=1)  # 0.25 is default
 # but 0.2 gives 100 test samples (so appears logical for reporting purposes)
-random_search = RandomizedSearchCV(model, param_distributions=params, cv=KFold(5), n_jobs=-1)
-ran_result = random_search.fit(X_train.iloc[:, :-1], y_train)  # takes > 20 mins (started 13:35, printing 'now' with time)
-
+random_search = RandomizedSearchCV(model, param_distributions=params, cv=KFold(5), n_jobs=-1, random_state=1)  # cannot be fully reproducible as not single threaded: https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development  https://datascience.stackexchange.com/questions/37413/why-running-the-same-code-on-the-same-data-gives-a-different-result-every-time
+#********______
+#********______don't run below when quick loading
+ran_result = random_search.fit(X_train.iloc[:, :-1], y_train)  # takes 5 mins
+best_model = ran_result.best_estimator_  # this seems to be the way of keeping best estimator found: https://www.kaggle.com/arrogantlymodest/randomised-cv-search-over-keras-neural-network
+# Note that v occasionally, tanh will produce better accuracy and therefore be chosen as the best model, but I do not think
+# it applies as well to the test set.
 print("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
 # Best accuracy: 0.8975000023841858
-# Best combination: {'shape_number_b': 128, 'shape_number_a': 64, 'learning_rate': 0.001, 'hidden_layers': 1, 'epochs': 50, 'batch_size': 10, 'activation': 'relu'}
+# Best combination: {'shape_number_a': 64, 'learning_rate': 0.001, 'hidden_layers': 1, 'epochs': 50, 'batch_size': 10, 'activation': 'relu'}
+#********______don't run above when quick loading
+#********______
 
-best_model = ran_result.best_estimator_  # this seems to be the way of keeping best estimator found: https://www.kaggle.com/arrogantlymodest/randomised-cv-search-over-keras-neural-network
-y_pred_proba = best_model.predict_proba(X_test.iloc[:, :-1])
-y_pred = best_model.predict(X_test.iloc[:, :-1])
+# Set parameters
+from sklearn.model_selection import GridSearchCV
+params = {'activation': ['relu'], 'batch_size': [10],
+          'epochs': [50], 'learning_rate': [0.001], 'shape_number_a': [64]}
+grid = GridSearchCV(model, param_grid=params, cv=KFold(5), n_jobs=-1)
+grid_result = grid.fit(X_train.iloc[:, :-1], y_train)
+print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
+# Best accuracy: 0.895000
+
+y_pred_proba = grid_result.predict_proba(X_test.iloc[:, :-1])  # deprecated but unsure how else to get this to work
+y_pred = (grid_result.predict(X_test.iloc[:, :-1]) > 0.5).astype("int32")  # replacing: best_model.predict(X_test.iloc[:, :-1])
+# as that was deprecated
 
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
 print(classification_report(y_pred, y_test))
 print(accuracy_score(y_pred, y_test))
 
-judgments_preds = pd.concat([pd.DataFrame(y_pred).reset_index(drop=True), pd.DataFrame(X_test['link']).reset_index(drop=True)], axis=1)
+judgments_preds = pd.concat([pd.DataFrame(y_pred).reset_index(drop=True), pd.DataFrame(X_test['Link']).reset_index(drop=True)], axis=1)
+# link changed for Link in above line, to facil quicker data loading
 judgments_preds.columns = ['my_classification', 'link']
+
+# # # # # # # # # #
+
+# Get text for df.s in X_test, alter the text to sub 'animal' for 'dog', re-embed them, then run the classifier on them
+r = []
+for l in X_test['Link']:
+    req = Request(l, headers={'User-Agent': 'Mozilla/5.0'})
+    webpage = urlopen(req).read()
+    page_soup = BeautifulSoup(webpage, "html5lib")
+    case_text = page_soup.get_text()  # scrape no more specif due to varying page layouts
+    case_text = re.sub('\n', ' ', case_text)  # replace '\n' with ' '
+    case_text = re.sub('@media screen|@media print|#screenonly|BAILII|Multidatabase Search|World Law', '', case_text)  # remove some patterns
+    case_text = re.sub('Animals', 'Dogs', case_text)
+    case_text = re.sub('animals', 'dogs', case_text)
+    case_text = re.sub('Animal', 'Dog', case_text)
+    case_text = re.sub('animal', 'dog', case_text)  # wait, this would cause error if 'animalistic' in text
+    r.append(
+        {
+            'link': l,
+            'case_name': link_dict[l][0],
+            'year': link_dict[l][1],
+            'classification': link_dict[l][2],
+            'word_count_pre_stem': len(word_tokenize(case_text)),  # included here to help catch scrape error
+            'judgment_text': case_text
+        }
+    )
+print("done")
+
+rr = pd.DataFrame(r)
+# rr.iloc[1, -1]
+# includes e.g. of manipulated text: "Whereas the former regime of farm payments had regard only to production, the purpose of the new scheme under the Regulation is to shift from production support to producer support and to make the single farm payment conditional upon compliance with environmental and dog welfare issues as well as the maintenance of the farm in good agricultural and environmental condition."
+
+dog_mean_embs = pd.DataFrame()
+for jt in rr['judgment_text']:
+    wt_list = []
+    wt_list.append(sent_tokenize(jt))
+    wt_list_vals = pd.DataFrame(wt_list).values
+    wt_list_vals = wt_list_vals.flatten()  # works
+    print("Original judgment sentence count is " + str(len(wt_list_vals)))
+    wt_list_vals = [wt for wt in wt_list_vals if len(wt) < 2000]
+    if len(wt_list_vals) > 5000:
+        random.seed(1)
+        wt_list_vals = random.sample(wt_list_vals, 5000)
+    X_embed = embed(wt_list_vals)
+    my_array = [np.array(emb) for emb in X_embed]
+    my_df = pd.DataFrame(my_array)
+    means = []
+    for c in my_df.columns:
+        means.append(my_df[c].mean())
+    means_df = pd.DataFrame(means).T
+    dog_mean_embs = pd.concat([dog_mean_embs, means_df])
+    print("Done " + str(len(dog_mean_embs)) + " embedding averages")
+
+print(dog_mean_embs.shape)
+
+# THIS RUNS DURING BREAK, THEN U CLASSIFY AND CHECK
+
+dog_pred = (best_model.predict(dog_mean_embs) > 0.5).astype("int32")
+print(confusion_matrix(dog_pred, y_test, labels=[1, 0]))
+print(classification_report(dog_pred, y_test))
+print(accuracy_score(dog_pred, y_test))
+
+# THE ABOVE SHOULD ALL BE DONE THROUGH THE BELOW SCRIPT - JUST CHANGE LINK_DICT2.KEYS FOR X_test['Link']
+
 
 # # # # # # # # # #
 
