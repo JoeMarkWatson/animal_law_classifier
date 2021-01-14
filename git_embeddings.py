@@ -14,7 +14,6 @@ import tensorflow
 tensorflow.random.set_seed(1)  # https://stackoverflow.com/questions/58638701/importerror-cannot-import-name-set-random-seed-from-tensorflow-c-users-po
 import random
 from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
 
 
 # # # judgment gathering # # #
