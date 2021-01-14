@@ -17,7 +17,6 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 
-
 # # # judgment gathering # # #
 
 # import labelled spreadsheet
@@ -136,7 +135,7 @@ def create_model(learning_rate, activation, shape_number_a):  # then add batch s
 model = KerasClassifier(build_fn=create_model)
 
 # Define the parameters to try out
-params = {'activation': ['relu'], 'batch_size': [1, 5, 10],
+params = {'activation': ['relu', 'tanh'], 'batch_size': [1, 5, 10],
           'epochs': [20, 50, 100, 200], 'learning_rate': [0.1, 0.01, 0.001], 'shape_number_a': [256, 128, 64, 32]}
          # other optimisers available, with adam by far most common  # https://keras.io/api/optimizers/
 
@@ -153,14 +152,25 @@ random_search = RandomizedSearchCV(model, param_distributions=params, cv=KFold(5
 #********______
 #********______don't run below when quick loading
 ran_result = random_search.fit(X_train.iloc[:, :-1], y_train)  # takes 5 mins
+print("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
+
+# THIS SEEMS TO WORK BELOW
+ran_result.best_estimator_.model.save('test_model.hdf5')
+ran_result.best_estimator_.model.save("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")
+
+best_model = tensorflow.keras.models.load_model('test_model.hdf5')  # https://www.tensorflow.org/api_docs/python/tf/keras/models/load_model  # compile=True appears not to be required
+best_model.predict_proba(X_test.iloc[:, :-1])
+y_pred = (best_model.predict(X_test.iloc[:, :-1]) > 0.5).astype("int32")
+# THIS SEEMS TO WORK ABOVE
+
 best_model = ran_result.best_estimator_  # this seems to be the way of keeping best estimator found: https://www.kaggle.com/arrogantlymodest/randomised-cv-search-over-keras-neural-network
 # Note that v occasionally, tanh will produce better accuracy and therefore be chosen as the best model, but I do not think
 # it applies as well to the test set.
-print("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
 # Best accuracy: 0.8975000023841858
 # Best combination: {'shape_number_a': 64, 'learning_rate': 0.001, 'hidden_layers': 1, 'epochs': 50, 'batch_size': 10, 'activation': 'relu'}
 #********______don't run above when quick loading
 #********______
+
 
 # Set parameters
 from sklearn.model_selection import GridSearchCV
@@ -186,66 +196,64 @@ judgments_preds.columns = ['my_classification', 'link']
 
 # # # # # # # # # #
 
-# Get text for df.s in X_test, alter the text to sub 'animal' for 'dog', re-embed them, then run the classifier on them
-r = []
-for l in X_test['Link']:
-    req = Request(l, headers={'User-Agent': 'Mozilla/5.0'})
-    webpage = urlopen(req).read()
-    page_soup = BeautifulSoup(webpage, "html5lib")
-    case_text = page_soup.get_text()  # scrape no more specif due to varying page layouts
-    case_text = re.sub('\n', ' ', case_text)  # replace '\n' with ' '
-    case_text = re.sub('@media screen|@media print|#screenonly|BAILII|Multidatabase Search|World Law', '', case_text)  # remove some patterns
-    case_text = re.sub('Animals', 'Dogs', case_text)
-    case_text = re.sub('animals', 'dogs', case_text)
-    case_text = re.sub('Animal', 'Dog', case_text)
-    case_text = re.sub('animal', 'dog', case_text)  # wait, this would cause error if 'animalistic' in text
-    r.append(
-        {
-            'link': l,
-            'case_name': link_dict[l][0],
-            'year': link_dict[l][1],
-            'classification': link_dict[l][2],
-            'word_count_pre_stem': len(word_tokenize(case_text)),  # included here to help catch scrape error
-            'judgment_text': case_text
-        }
-    )
+# change 'animal' to 'dog', 'horse', 'cat'
+
+animal_list = ['dog', 'horse', 'cat']
+d = []
+
+for a in animal_list:
+
+    for l in enumerate(judgments_preds['link']):
+
+        req = Request(l[1], headers={'User-Agent': 'Mozilla/5.0'})
+        webpage = urlopen(req).read()
+        page_soup = BeautifulSoup(webpage, "html5lib")
+        case_text = page_soup.get_text()  # scrape no more specif due to varying page layouts
+        case_text = re.sub('\n', ' ', case_text)  # replace '\n' with ' '
+        case_text = re.sub('@media screen|@media print|#screenonly|BAILII|Multidatabase Search|World Law', '', case_text)  # remove some patterns
+        case_text = re.sub('\\banimals\\b', str(a + "s"), case_text)  # https://stackoverflow.com/questions/3995034/do-regular-expressions-from-the-re-module-support-word-boundaries-b
+        case_text = re.sub('\\banimal\\b', a, case_text)
+
+        wt_list = []
+        wt_list.append(sent_tokenize(case_text))
+        wt_list_vals = pd.DataFrame(wt_list).values
+        wt_list_vals = wt_list_vals.flatten()
+        print("Original judgment sentence count is " + str(len(wt_list_vals)))
+        wt_list_vals = [wt for wt in wt_list_vals if len(wt) < 2000]
+        if len(wt_list_vals) > 5000:
+            random.seed(1)
+            wt_list_vals = random.sample(wt_list_vals, 5000)
+        X_embed = embed(wt_list_vals)
+        my_array = [np.array(emb) for emb in X_embed]
+        my_df = pd.DataFrame(my_array)
+        means = []
+        for c in my_df.columns:
+            means.append(my_df[c].mean())
+        means_df = pd.DataFrame(means).T
+
+        d.append(
+            {
+                'sub_word': a,
+                'link': l[1],
+                'case_name': link_dict[l[1]][0],
+                'year': link_dict[l[1]][1],
+                'word_count_pre_stem': len(word_tokenize(case_text)),
+                'sent_count_pre_stem': len(sent_tokenize(case_text)),
+                'my_classification': grid_result.predict(means_df)[0][0]
+            }
+        )
+
+        print("Done " + str(l[0]+1) + " classifications")
+
 print("done")
 
-rr = pd.DataFrame(r)
-# rr.iloc[1, -1]
-# includes e.g. of manipulated text: "Whereas the former regime of farm payments had regard only to production, the purpose of the new scheme under the Regulation is to shift from production support to producer support and to make the single farm payment conditional upon compliance with environmental and dog welfare issues as well as the maintenance of the farm in good agricultural and environmental condition."
+dhc = pd.DataFrame(d)
 
-dog_mean_embs = pd.DataFrame()
-for jt in rr['judgment_text']:
-    wt_list = []
-    wt_list.append(sent_tokenize(jt))
-    wt_list_vals = pd.DataFrame(wt_list).values
-    wt_list_vals = wt_list_vals.flatten()  # works
-    print("Original judgment sentence count is " + str(len(wt_list_vals)))
-    wt_list_vals = [wt for wt in wt_list_vals if len(wt) < 2000]
-    if len(wt_list_vals) > 5000:
-        random.seed(1)
-        wt_list_vals = random.sample(wt_list_vals, 5000)
-    X_embed = embed(wt_list_vals)
-    my_array = [np.array(emb) for emb in X_embed]
-    my_df = pd.DataFrame(my_array)
-    means = []
-    for c in my_df.columns:
-        means.append(my_df[c].mean())
-    means_df = pd.DataFrame(means).T
-    dog_mean_embs = pd.concat([dog_mean_embs, means_df])
-    print("Done " + str(len(dog_mean_embs)) + " embedding averages")
+for a in animal_list:
+    for row in range(len(judgments_preds)):
+        if dhc[dhc['sub_word'] == a][['my_classification']].reset_index(drop=True).loc[row][0] != judgments_preds['my_classification'][row]:
+            print('Predictions differ')  # showing that no predictions differ from original predictions
 
-print(dog_mean_embs.shape)
-
-# THIS RUNS DURING BREAK, THEN U CLASSIFY AND CHECK
-
-dog_pred = (best_model.predict(dog_mean_embs) > 0.5).astype("int32")
-print(confusion_matrix(dog_pred, y_test, labels=[1, 0]))
-print(classification_report(dog_pred, y_test))
-print(accuracy_score(dog_pred, y_test))
-
-# THE ABOVE SHOULD ALL BE DONE THROUGH THE BELOW SCRIPT - JUST CHANGE LINK_DICT2.KEYS FOR X_test['Link']
 
 
 # # # # # # # # # #
@@ -335,12 +343,16 @@ full_pred_df.to_csv("/Users/joewatson/Desktop/LawTech/full_pred_df12_jan.csv", i
 
 
 
+
+
+
+
 # re activations  # https://medium.com/@himanshuxd/activation-functions-sigmoid-relu-leaky-relu-and-softmax-basics-for-neural-networks-and-deep-8d9c70eed91e
 # good general article: https://towardsdatascience.com/are-you-using-the-scikit-learn-wrapper-in-your-keras-deep-learning-model-a3005696ff38
 
 #_______________________________________________________________________________________________________________________
 
-# create a keras model (outside the sklearn wrapper) using params obtained through experimentation
+# create a keras model (outside the sklearn wrapper) using params obtained through random search
 
 from keras.callbacks import EarlyStopping
 from keras.callbacks import ModelCheckpoint
@@ -367,17 +379,30 @@ def plot_accuracy(acc,val_acc):
 
 # run a keras model without any tuning beyond saving the best epoch (with param.s set through experimentation)
 model_save = ModelCheckpoint('best_model.hdf5', monitor='val_loss', save_best_only=True)
-early_stopping = EarlyStopping(monitor='val_acc', patience=100)
-seed(123)  # from numpy
-tensorflow.random.set_seed(123)  # from tf, with both required for reproducible results: https://machinelearningmastery.com/reproducible-results-neural-networks-keras/
+early_stopping = EarlyStopping(monitor='val_loss', patience=20)
+seed(1)  # from numpy
+tensorflow.random.set_seed(1)  # from tf, with both required for reproducible results: https://machinelearningmastery.com/reproducible-results-neural-networks-keras/
 model = Sequential()
-model.add(Dense(128, input_shape=(512,), activation='relu'))
-model.add(Dense(1, input_shape=(128,), activation='sigmoid'))
+model.add(Dense(64, input_shape=(512,), activation='relu'))
+model.add(Dense(1, activation='sigmoid'))
 model.compile(loss='binary_crossentropy',
-              optimizer='adam',
+              optimizer=Adam(lr=0.001),
               metrics=['acc'])
 model.summary()
-h_callback = model.fit(X_train, y_train, epochs=200, validation_data=(X_test, y_test), callbacks=[model_save, early_stopping])
+
+h_callback = model.fit(X_train.iloc[:, :-1], y_train, epochs=50, batch_size=10, validation_data=(X_test.iloc[:, :-1], y_test), callbacks=[model_save, early_stopping])
 plot_loss(h_callback.history['loss'], h_callback.history['val_loss'])
 plot_accuracy(h_callback.history['acc'], h_callback.history['val_acc'])
 #keras.models.load_model('path/to/location')  # to load the model back
+
+from tensorflow import keras
+my_model = keras.models.load_model('best_model.hdf5')
+
+y_pred_proba = my_model.predict_proba(X_test.iloc[:, :-1])  # deprecated but unsure how else to get this to work
+y_pred = (my_model.predict(X_test.iloc[:, :-1]) > 0.5).astype("int32")  # replacing: best_model.predict(X_test.iloc[:, :-1])
+# as that was deprecated
+
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
+print(classification_report(y_pred, y_test))
+print(accuracy_score(y_pred, y_test))
