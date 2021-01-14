@@ -333,5 +333,6 @@ full_pred_df.to_csv("/Users/joewatson/Desktop/LawTech/full_pred_df12_jan.csv", i
 
 
 
+
 # re activations  # https://medium.com/@himanshuxd/activation-functions-sigmoid-relu-leaky-relu-and-softmax-basics-for-neural-networks-and-deep-8d9c70eed91e
 # good general article: https://towardsdatascience.com/are-you-using-the-scikit-learn-wrapper-in-your-keras-deep-learning-model-a3005696ff38
