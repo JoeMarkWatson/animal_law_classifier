@@ -157,8 +157,9 @@ print("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, r
 # THIS SEEMS TO WORK BELOW
 ran_result.best_estimator_.model.save('test_model.hdf5')
 ran_result.best_estimator_.model.save("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")
-
 best_model = tensorflow.keras.models.load_model('test_model.hdf5')  # https://www.tensorflow.org/api_docs/python/tf/keras/models/load_model  # compile=True appears not to be required
+best_model = tensorflow.keras.models.load_model("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")  # https://www.tensorflow.org/api_docs/python/tf/keras/models/load_model  # compile=True appears not to be required
+
 best_model.predict_proba(X_test.iloc[:, :-1])
 y_pred = (best_model.predict(X_test.iloc[:, :-1]) > 0.5).astype("int32")
 # THIS SEEMS TO WORK ABOVE
