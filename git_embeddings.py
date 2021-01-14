@@ -153,7 +153,8 @@ print("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, r
 # Best accuracy: 0.8975000023841858
 # Best combination: {'shape_number_a': 64, 'learning_rate': 0.001, 'hidden_layers': 1, 'epochs': 50, 'batch_size': 10, 'activation': 'relu'}
 
-ran_result.best_estimator_.model.save("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")  # save the best model
+#ran_result.best_estimator_.model.save("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")  # save the best model
+
 #******** do not run above lines when quick loading as takes 5 mins searching
 
 best_model = tensorflow.keras.models.load_model("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")  # https://www.tensorflow.org/api_docs/python/tf/keras/models/load_model  # compile=True appears not to be required
