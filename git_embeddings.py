@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 # # # judgment gathering # # #
 
 # import labelled spreadsheet
-df = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled.csv")
+df = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled.csv")  # import csv with March's labels on it
 df = df[['Case', 'Year', 'Link', 'Classification', 'Sample']]  # remove Index, Explanation and og_sample columns
 df = df[df['Classification'] >= 0]  # retain labelled judgments only
 
@@ -54,11 +54,6 @@ print("done")
 
 dd = pd.DataFrame(d)
 
-# the below was applied to fix error from calling link_dict wrong in (now fixed) loop above
-#dd.columns = ['link', 'year', 'classification', 'case_name', 'word_count_pre_stem', 'judgment_text']
-#dd['case_name'] = list(map(lambda x: link_dict[x][0], dd['link']))
-# the above was applied to fix error from calling link_dict wrong in (now fixed) loop above
-
 
 # # # embedding # # #
 
@@ -75,7 +70,7 @@ for jt in dd['judgment_text']:
     wt_list = []
     wt_list.append(sent_tokenize(jt))
     wt_list_vals = pd.DataFrame(wt_list).values
-    wt_list_vals = wt_list_vals.flatten()  # works
+    wt_list_vals = wt_list_vals.flatten()
     print("Original judgment sentence count is " + str(len(wt_list_vals)))
     wt_list_vals = [wt for wt in wt_list_vals if len(wt) < 2000]
     if len(wt_list_vals) > 5000:
@@ -144,47 +139,28 @@ seed(1)  # from numpy again I think so poss duplicating
 tensorflow.random.set_seed(1)  # from tf
 
 all_mean_embs = pd.concat([all_mean_embs, df['Link'].reset_index(drop=True)], axis=1)  # adding link onto end of all_mean_embs for later merging
-# in the above line, dd['link'] def worked, but was changed to df['Link'].reset_index(drop=True) for quicker loading
+# in the above line, dd['link'] was changed to df['Link'].reset_index(drop=True) for quicker loading (from above
+# data loading point)
 
 X_train, X_test, y_train, y_test = train_test_split(all_mean_embs, y, test_size=0.2, random_state=1)  # 0.25 is default
 # but 0.2 gives 100 test samples (so appears logical for reporting purposes)
+
 random_search = RandomizedSearchCV(model, param_distributions=params, cv=KFold(5), n_jobs=-1, random_state=1)  # cannot be fully reproducible as not single threaded: https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development  https://datascience.stackexchange.com/questions/37413/why-running-the-same-code-on-the-same-data-gives-a-different-result-every-time
-#********______
-#********______don't run below when quick loading
+
+#******** do not run below lines when quick loading as takes 5 mins searching
 ran_result = random_search.fit(X_train.iloc[:, :-1], y_train)  # takes 5 mins
 print("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
 
-# THIS SEEMS TO WORK BELOW
-ran_result.best_estimator_.model.save('test_model.hdf5')
-ran_result.best_estimator_.model.save("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")
-best_model = tensorflow.keras.models.load_model('test_model.hdf5')  # https://www.tensorflow.org/api_docs/python/tf/keras/models/load_model  # compile=True appears not to be required
-best_model = tensorflow.keras.models.load_model("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")  # https://www.tensorflow.org/api_docs/python/tf/keras/models/load_model  # compile=True appears not to be required
-
-best_model.predict_proba(X_test.iloc[:, :-1])
-y_pred = (best_model.predict(X_test.iloc[:, :-1]) > 0.5).astype("int32")
-# THIS SEEMS TO WORK ABOVE
-
-best_model = ran_result.best_estimator_  # this seems to be the way of keeping best estimator found: https://www.kaggle.com/arrogantlymodest/randomised-cv-search-over-keras-neural-network
-# Note that v occasionally, tanh will produce better accuracy and therefore be chosen as the best model, but I do not think
-# it applies as well to the test set.
 # Best accuracy: 0.8975000023841858
 # Best combination: {'shape_number_a': 64, 'learning_rate': 0.001, 'hidden_layers': 1, 'epochs': 50, 'batch_size': 10, 'activation': 'relu'}
-#********______don't run above when quick loading
-#********______
 
+ran_result.best_estimator_.model.save("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")  # save the best model
+#******** do not run above lines when quick loading as takes 5 mins searching
 
-# Set parameters
-from sklearn.model_selection import GridSearchCV
-params = {'activation': ['relu'], 'batch_size': [10],
-          'epochs': [50], 'learning_rate': [0.001], 'shape_number_a': [64]}
-grid = GridSearchCV(model, param_grid=params, cv=KFold(5), n_jobs=-1)
-grid_result = grid.fit(X_train.iloc[:, :-1], y_train)
-print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
-# Best accuracy: 0.895000
-
-y_pred_proba = grid_result.predict_proba(X_test.iloc[:, :-1])  # deprecated but unsure how else to get this to work
-y_pred = (grid_result.predict(X_test.iloc[:, :-1]) > 0.5).astype("int32")  # replacing: best_model.predict(X_test.iloc[:, :-1])
-# as that was deprecated
+best_model = tensorflow.keras.models.load_model("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")  # https://www.tensorflow.org/api_docs/python/tf/keras/models/load_model  # compile=True appears not to be required
+y_pred_proba = best_model.predict_proba(X_test.iloc[:, :-1])  # in case prediction info is required
+# likely deprecated method but works consistently and has been advised in some places
+y_pred = (best_model.predict(X_test.iloc[:, :-1]) > 0.5).astype("int32")
 
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
@@ -192,12 +168,13 @@ print(classification_report(y_pred, y_test))
 print(accuracy_score(y_pred, y_test))
 
 judgments_preds = pd.concat([pd.DataFrame(y_pred).reset_index(drop=True), pd.DataFrame(X_test['Link']).reset_index(drop=True)], axis=1)
-# link changed for Link in above line, to facil quicker data loading
+# link changed for Link in above line, to facil use of data from data loading point
 judgments_preds.columns = ['my_classification', 'link']
+
 
 # # # # # # # # # #
 
-# change 'animal' to 'dog', 'horse', 'cat'
+# change 'animal' to 'dog', 'horse', 'cat' to show that classifier could still function without the presence of 'animal'
 
 animal_list = ['dog', 'horse', 'cat']
 d = []
@@ -259,7 +236,7 @@ for a in animal_list:
 
 # # # # # # # # # #
 
-# write a loop that scrapes, embeds and classifies
+# write a loop that scrapes, embeds and classifies all non-labelled cases
 
 df2 = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled.csv")
 df2 = df2[['Case', 'Year', 'Link', 'Classification', 'Sample']]  # remove Index, Explanation and og_sample columns
@@ -317,7 +294,15 @@ non_l_d_c['march_classification'] = np.nan  # adding march_classification column
 non_l_d_c['march_narrow'] = np.nan  # adding march_classification column for upcoming concat
 non_l_d_c['class_match'] = np.nan
 
+
+# # # # # # # # # #
+
 # make a df with my_classification and march_classification columns
+
+# use df created at start
+#df = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled.csv")  # import csv with March's labels on it
+#df = df[['Case', 'Year', 'Link', 'Classification', 'Sample']]  # remove Index, Explanation and og_sample columns
+#df = df[df['Classification'] >= 0]  # retain labelled judgments only
 df.columns = ['case_name', 'year', 'link', 'march_classification', 'sample']  # renaming the cols of the df created early on, which holds only labelled judgments
 df['march_narrow'] = np.where(df['march_classification'] == 1, 1, 0)
 
@@ -350,60 +335,3 @@ full_pred_df.to_csv("/Users/joewatson/Desktop/LawTech/full_pred_df12_jan.csv", i
 
 # re activations  # https://medium.com/@himanshuxd/activation-functions-sigmoid-relu-leaky-relu-and-softmax-basics-for-neural-networks-and-deep-8d9c70eed91e
 # good general article: https://towardsdatascience.com/are-you-using-the-scikit-learn-wrapper-in-your-keras-deep-learning-model-a3005696ff38
-
-#_______________________________________________________________________________________________________________________
-
-# create a keras model (outside the sklearn wrapper) using params obtained through random search
-
-from keras.callbacks import EarlyStopping
-from keras.callbacks import ModelCheckpoint
-
-def plot_loss(loss,val_loss):
-    plt.figure()
-    plt.plot(loss)
-    plt.plot(val_loss)
-    plt.title('Model loss')
-    plt.ylabel('Loss')
-    plt.xlabel('Epoch')
-    plt.legend(['Train', 'Test'], loc='upper right')
-    plt.show()
-
-def plot_accuracy(acc,val_acc):
-    plt.figure()
-    plt.plot(acc)
-    plt.plot(val_acc)
-    plt.title('Model accuracy')
-    plt.ylabel('Accuracy')
-    plt.xlabel('Epoch')
-    plt.legend(['Train', 'Test'], loc='upper left')
-    plt.show()
-
-# run a keras model without any tuning beyond saving the best epoch (with param.s set through experimentation)
-model_save = ModelCheckpoint('best_model.hdf5', monitor='val_loss', save_best_only=True)
-early_stopping = EarlyStopping(monitor='val_loss', patience=20)
-seed(1)  # from numpy
-tensorflow.random.set_seed(1)  # from tf, with both required for reproducible results: https://machinelearningmastery.com/reproducible-results-neural-networks-keras/
-model = Sequential()
-model.add(Dense(64, input_shape=(512,), activation='relu'))
-model.add(Dense(1, activation='sigmoid'))
-model.compile(loss='binary_crossentropy',
-              optimizer=Adam(lr=0.001),
-              metrics=['acc'])
-model.summary()
-
-h_callback = model.fit(X_train.iloc[:, :-1], y_train, epochs=50, batch_size=10, validation_data=(X_test.iloc[:, :-1], y_test), callbacks=[model_save, early_stopping])
-plot_loss(h_callback.history['loss'], h_callback.history['val_loss'])
-plot_accuracy(h_callback.history['acc'], h_callback.history['val_acc'])
-#keras.models.load_model('path/to/location')  # to load the model back
-
-from tensorflow import keras
-my_model = keras.models.load_model('best_model.hdf5')
-
-y_pred_proba = my_model.predict_proba(X_test.iloc[:, :-1])  # deprecated but unsure how else to get this to work
-y_pred = (my_model.predict(X_test.iloc[:, :-1]) > 0.5).astype("int32")  # replacing: best_model.predict(X_test.iloc[:, :-1])
-# as that was deprecated
-
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
-print(classification_report(y_pred, y_test))
-print(accuracy_score(y_pred, y_test))
