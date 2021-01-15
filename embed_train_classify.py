@@ -324,7 +324,29 @@ labelled_n_preds['class_match'] = np.select(conditions, values)
 
 #concat (stack) with non_l_d_c and write to csv
 full_pred_df = pd.concat([non_l_d_c, labelled_n_preds])
+# writing to csv so March can see where human and machine classifications are different
 full_pred_df.to_csv("/Users/joewatson/Desktop/LawTech/full_pred_df12_jan.csv", index=False)
+
+# # # # #
+
+# writing csv with human and machine labelled judgments for A4A to use as internal resource
+a4a_df = pd.read_csv("/Users/joewatson/Desktop/LawTech/full_pred_df12_jan.csv")
+a4a_df = a4a_df[['case_name', 'year', 'link', 'my_classification', 'march_narrow']]
+
+classification_list = []
+for i in range(len(a4a_df)):
+    player_classification = []
+    if a4a_df.iloc[i, 4] >= 0:  # march_narrow classification available
+        player_classification = [a4a_df.iloc[i, 4], 1]
+    else:
+        player_classification = [a4a_df.iloc[i, 3], 0]
+    classification_list.append(player_classification)
+
+# concat march's narrow classification - or your classification if march's unavailable - to first 3 a4a_df cols
+a4a_df_share = pd.concat([a4a_df[['case_name', 'year', 'link']], pd.DataFrame(classification_list)], axis=1)
+a4a_df_share.columns = ['case_name', 'year', 'link', 'classification', 'human_classification']
+a4a_df_share.to_csv("/Users/joewatson/Desktop/LawTech/a4a_df_share15Jan.csv", index=False)
+
 
 
 
