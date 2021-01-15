@@ -332,7 +332,12 @@ full_pred_df.to_csv("/Users/joewatson/Desktop/LawTech/full_pred_df12_jan.csv", i
 
 
 
+# re regularisation: assumed not needed for now. Incog tab link: https://towardsdatascience.com/regularization-techniques-and-their-implementation-in-tensorflow-keras-c06e7551e709
+# see also: https://machinelearningmastery.com/how-to-reduce-overfitting-in-deep-learning-with-weight-regularization/
 
-
-# re activations  # https://medium.com/@himanshuxd/activation-functions-sigmoid-relu-leaky-relu-and-softmax-basics-for-neural-networks-and-deep-8d9c70eed91e
+# re activations: # https://medium.com/@himanshuxd/activation-functions-sigmoid-relu-leaky-relu-and-softmax-basics-for-neural-networks-and-deep-8d9c70eed91e
 # good general article: https://towardsdatascience.com/are-you-using-the-scikit-learn-wrapper-in-your-keras-deep-learning-model-a3005696ff38
+
+# https://towardsdatascience.com/classifying-scientific-papers-with-universal-sentence-embeddings-4e0695b70c44
+# https://towardsdatascience.com/comparison-of-dimensionality-reduction-techniques-for-image-art-style-embeddings-723912fd6250
+# https://www.topbots.com/document-embedding-techniques/#choose-technique
