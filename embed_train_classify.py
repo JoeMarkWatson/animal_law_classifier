@@ -355,6 +355,8 @@ a4a_df_share.to_csv("/Users/joewatson/Desktop/LawTech/a4a_df_share15Jan.csv", in
 
 
 
+# re no. of param.s vs no. of training samples: https://stats.stackexchange.com/questions/329861/what-happens-when-a-model-is-having-more-parameters-than-training-samples
+
 # re regularisation: assumed not needed for now. Incog tab link: https://towardsdatascience.com/regularization-techniques-and-their-implementation-in-tensorflow-keras-c06e7551e709
 # see also: https://machinelearningmastery.com/how-to-reduce-overfitting-in-deep-learning-with-weight-regularization/
 
@@ -364,3 +366,4 @@ a4a_df_share.to_csv("/Users/joewatson/Desktop/LawTech/a4a_df_share15Jan.csv", in
 # https://towardsdatascience.com/classifying-scientific-papers-with-universal-sentence-embeddings-4e0695b70c44
 # https://towardsdatascience.com/comparison-of-dimensionality-reduction-techniques-for-image-art-style-embeddings-723912fd6250
 # https://www.topbots.com/document-embedding-techniques/#choose-technique
+# https://towardsdatascience.com/using-use-universal-sentence-encoder-to-detect-fake-news-dfc02dc32ae9
