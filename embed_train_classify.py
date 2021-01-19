@@ -110,7 +110,9 @@ from keras.layers import Dense
 from keras.optimizers import Adam
 from keras.wrappers.scikit_learn import KerasClassifier
 from sklearn.model_selection import RandomizedSearchCV
-from sklearn.model_selection import KFold
+# from sklearn.model_selection import KFold
+from sklearn.model_selection import StratifiedKFold  # likely more applicable than Kfold as unbalanced classes: http://ethen8181.github.io/machine-learning/model_selection/model_selection.html#K-Fold-Cross-Validation
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 
 def create_model(learning_rate, activation, shape_number_a):  # then add batch size later, leaving no. of layers and layer order constant
     opt = Adam(lr=learning_rate)  # create an Adam optimizer with the given learning rate
@@ -129,7 +131,7 @@ def create_model(learning_rate, activation, shape_number_a):  # then add batch s
 model = KerasClassifier(build_fn=create_model)
 
 # Define the parameters to try out
-params = {'activation': ['relu', 'tanh'], 'batch_size': [1, 5, 10],
+params = {'activation': ['relu'], 'batch_size': [1, 5, 10],
           'epochs': [20, 50, 100, 200], 'learning_rate': [0.1, 0.01, 0.001], 'shape_number_a': [256, 128, 64, 32]}
          # other optimisers available, with adam by far most common  # https://keras.io/api/optimizers/
 
@@ -144,25 +146,26 @@ all_mean_embs = pd.concat([all_mean_embs, df['Link'].reset_index(drop=True)], ax
 X_train, X_test, y_train, y_test = train_test_split(all_mean_embs, y, test_size=0.2, random_state=1)  # 0.25 is default
 # but 0.2 gives 100 test samples (so appears logical for reporting purposes)
 
-random_search = RandomizedSearchCV(model, param_distributions=params, cv=KFold(5), n_jobs=-1, random_state=1)  # cannot be fully reproducible as not single threaded: https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development  https://datascience.stackexchange.com/questions/37413/why-running-the-same-code-on-the-same-data-gives-a-different-result-every-time
+random_search = RandomizedSearchCV(model, param_distributions=params, cv=StratifiedKFold(5), n_jobs=-1, random_state=1)  # cannot be fully reproducible as not single threaded: https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development  https://datascience.stackexchange.com/questions/37413/why-running-the-same-code-on-the-same-data-gives-a-different-result-every-time
 
 #******** do not run below lines when quick loading as takes 5 mins searching
 ran_result = random_search.fit(X_train.iloc[:, :-1], y_train)  # takes 5 mins
 print("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
 
-# Best accuracy: 0.8975000023841858
-# Best combination: {'shape_number_a': 64, 'learning_rate': 0.001, 'hidden_layers': 1, 'epochs': 50, 'batch_size': 10, 'activation': 'relu'}
+# Best accuracy: 0.9 (precisely)  # accuracy in write up
+# Best combination: {'shape_number_a': 256, 'learning_rate': 0.1, 'epochs': 20, 'batch_size': 5, 'activation': 'relu'}  # model in write up
+# When model identified without stratifying kfolds  # Best accuracy: 0.8975000023841858
+# When model identified without stratifying kfolds  # Best combination: {'shape_number_a': 64, 'learning_rate': 0.001, 'hidden_layers': 1, 'epochs': 50, 'batch_size': 10, 'activation': 'relu'}
 
-#ran_result.best_estimator_.model.save("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")  # save the best model
-
+ran_result.best_estimator_.model.save("/Users/joewatson/Desktop/LawTech/ran_search_strat_model.hdf5")  # save the best model
+#ran_result.best_estimator_.model.save("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")  # when model identified without stratifying kfolds
 #******** do not run above lines when quick loading as takes 5 mins searching
 
-best_model = tensorflow.keras.models.load_model("/Users/joewatson/Desktop/LawTech/ran_search_model.hdf5")  # https://www.tensorflow.org/api_docs/python/tf/keras/models/load_model  # compile=True appears not to be required
-y_pred_proba = best_model.predict_proba(X_test.iloc[:, :-1])  # in case prediction info is required
-# likely deprecated method but works consistently and has been advised in some places
+best_model = tensorflow.keras.models.load_model("/Users/joewatson/Desktop/LawTech/ran_search_strat_model.hdf5")  # https://www.tensorflow.org/api_docs/python/tf/keras/models/load_model  # compile=True appears not to be required
+#y_pred_proba = best_model.predict_proba(X_test.iloc[:, :-1])  # in case prediction info is required  # likely deprecated method but works consistently
+y_pred_proba = best_model.predict(X_test.iloc[:, :-1])  # in case prediction info is required  # code altered to avoid deprecation warning
 y_pred = (best_model.predict(X_test.iloc[:, :-1]) > 0.5).astype("int32")
 
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
 print(classification_report(y_pred, y_test))
 print(accuracy_score(y_pred, y_test))
