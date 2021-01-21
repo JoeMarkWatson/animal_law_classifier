@@ -170,9 +170,11 @@ print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
 print(classification_report(y_pred, y_test))
 print(accuracy_score(y_pred, y_test))
 
-judgments_preds = pd.concat([pd.DataFrame(y_pred).reset_index(drop=True), pd.DataFrame(X_test['Link']).reset_index(drop=True)], axis=1)
+judgments_preds = pd.concat([pd.DataFrame(y_pred).reset_index(drop=True),
+                             pd.DataFrame(y_pred_proba).reset_index(drop=True),
+                             pd.DataFrame(X_test['Link']).reset_index(drop=True)], axis=1)
 # link changed for Link in above line, to facil use of data from data loading point
-judgments_preds.columns = ['my_classification', 'link']
+judgments_preds.columns = ['my_classification', 'raw_classification', 'link']
 
 
 # # # # # # # # # #
@@ -220,7 +222,8 @@ for a in animal_list:
                 'year': link_dict[l[1]][1],
                 'word_count_pre_stem': len(word_tokenize(case_text)),
                 'sent_count_pre_stem': len(sent_tokenize(case_text)),
-                'my_classification': grid_result.predict(means_df)[0][0]
+                'my_classification': (best_model.predict(means_df) > 0.5).astype("int32")[0][0],
+                'raw_classification': best_model.predict(means_df)[0][0]  # which can be used for certainty
             }
         )
 
@@ -230,12 +233,27 @@ print("done")
 
 dhc = pd.DataFrame(d)
 
+#SAVING AND LOADING POINT BELOW
+#dhc.to_csv("/Users/joewatson/Desktop/LawTech/dhc_21Jan.csv", index=False)  # saved in case want to re-inspect
+#judgments_preds.to_csv("/Users/joewatson/Desktop/LawTech/judgment_preds_test_set_21Jan.csv", index=False)  # saved in case want to re-inspect
+
+#dhc = pd.read_csv("/Users/joewatson/Desktop/LawTech/dhc_21Jan.csv")
+#judgments_preds = pd.read_csv("/Users/joewatson/Desktop/LawTech/judgment_preds_test_set_21Jan.csv")
+#SAVING AND LOADING POINT ABOVE
+
 for a in animal_list:
     for row in range(len(judgments_preds)):
         if dhc[dhc['sub_word'] == a][['my_classification']].reset_index(drop=True).loc[row][0] != judgments_preds['my_classification'][row]:
-            print('Predictions differ')  # showing that no predictions differ from original predictions
+            print('When sub word is ' + a + ', predictions differ for: ')
+            print(dhc[dhc['sub_word'] == a][['link']].reset_index(drop=True).loc[row][0])
+            # with no printout showing that no predictions differ from original predictions
 
-
+# When sub word is dog, predictions differ for:
+# https://www.bailii.org/ew/cases/EWCA/Crim/2012/1288.html
+# When sub word is dog, predictions differ for:
+# https://www.bailii.org/ew/cases/EWCA/Civ/2006/632.html
+# When sub word is horse, predictions differ for:
+# https://www.bailii.org/ew/cases/EWHC/Admin/2010/347.html
 
 # # # # # # # # # #
 
@@ -281,7 +299,8 @@ for l in enumerate(link_dict2.keys()):
             'year': link_dict2[l[1]][1],
             'word_count_pre_stem': len(word_tokenize(case_text)),
             'sent_count_pre_stem': len(sent_tokenize(case_text)),
-            'my_classification': best_model.predict(means_df)
+            'my_classification': (best_model.predict(means_df) > 0.5).astype("int32")[0][0],
+            'raw_classification': best_model.predict(means_df)[0][0]  # which can be used for certainty
         }
     )
 
@@ -290,11 +309,11 @@ for l in enumerate(link_dict2.keys()):
 print("done")
 
 non_labelled_d = pd.DataFrame(d)
-non_labelled_d['my_classification'] = list(map(lambda x: x[0][0], non_labelled_d['my_classification']))
-non_l_d_c = non_labelled_d[['case_name', 'year', 'link', 'my_classification']].copy()  # retain cols to match with imported df
+#non_labelled_d['my_classification'] = list(map(lambda x: x[0][0], non_labelled_d['my_classification']))
+non_l_d_c = non_labelled_d[['case_name', 'year', 'link', 'my_classification', 'raw_classification']].copy()  # retain cols to match with imported df
 non_l_d_c['sample'] = 0  # adding sample column for upcoming concat
 non_l_d_c['march_classification'] = np.nan  # adding march_classification column for upcoming concat
-non_l_d_c['march_narrow'] = np.nan  # adding march_classification column for upcoming concat
+non_l_d_c['march_narrow'] = np.nan  # adding march_narrow column for upcoming concat
 non_l_d_c['class_match'] = np.nan
 
 
@@ -327,30 +346,30 @@ labelled_n_preds['class_match'] = np.select(conditions, values)
 
 #concat (stack) with non_l_d_c and write to csv
 full_pred_df = pd.concat([non_l_d_c, labelled_n_preds])
+
 # writing to csv so March can see where human and machine classifications are different
-full_pred_df.to_csv("/Users/joewatson/Desktop/LawTech/full_pred_df12_jan.csv", index=False)
+#full_pred_df.to_csv("/Users/joewatson/Desktop/LawTech/full_pred_df21_jan.csv", index=False)
 
 # # # # #
 
 # writing csv with human and machine labelled judgments for A4A to use as internal resource
-a4a_df = pd.read_csv("/Users/joewatson/Desktop/LawTech/full_pred_df12_jan.csv")
-a4a_df = a4a_df[['case_name', 'year', 'link', 'my_classification', 'march_narrow']]
+a4a_df = pd.read_csv("/Users/joewatson/Desktop/LawTech/full_pred_df21_jan.csv")
+a4a_df = a4a_df[['case_name', 'year', 'link', 'my_classification', 'raw_classification', 'march_narrow']]
 
 classification_list = []
 for i in range(len(a4a_df)):
     player_classification = []
-    if a4a_df.iloc[i, 4] >= 0:  # march_narrow classification available
-        player_classification = [a4a_df.iloc[i, 4], 1]
+    if a4a_df.iloc[i, 5] >= 0:  # march_narrow classification available
+        player_classification = [a4a_df.iloc[i, 5], np.nan]
     else:
-        player_classification = [a4a_df.iloc[i, 3], 0]
+        player_classification = [a4a_df.iloc[i, 3], np.round(a4a_df.iloc[i, 4], 4)]
     classification_list.append(player_classification)
 
 # concat march's narrow classification - or your classification if march's unavailable - to first 3 a4a_df cols
 a4a_df_share = pd.concat([a4a_df[['case_name', 'year', 'link']], pd.DataFrame(classification_list)], axis=1)
-a4a_df_share.columns = ['case_name', 'year', 'link', 'classification', 'human_classification']
-a4a_df_share.to_csv("/Users/joewatson/Desktop/LawTech/a4a_df_share15Jan.csv", index=False)
-
-
+a4a_df_share.columns = ['case_name', 'year', 'link', 'classification', 'raw_pred_if_non-human']
+a4a_df_share = a4a_df_share.sort_values('year')
+#a4a_df_share.to_csv("/Users/joewatson/Desktop/LawTech/a4a_df_share21Jan.csv", index=False)
 
 
 
