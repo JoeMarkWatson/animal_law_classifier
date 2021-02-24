@@ -19,7 +19,8 @@ from sklearn.model_selection import train_test_split
 # # # judgment gathering # # #
 
 # import labelled spreadsheet
-df = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled.csv")  # import csv with March's labels on it
+# df = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled.csv")  # import csv with March's labels on it
+df = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled_h.csv")  # csv with Heathcote error fixed
 df = df[['Case', 'Year', 'Link', 'Classification', 'Sample']]  # remove Index, Explanation and og_sample columns
 df = df[df['Classification'] >= 0]  # retain labelled judgments only
 
@@ -53,16 +54,104 @@ print("done")
 
 dd = pd.DataFrame(d)
 
+dd['classification_narrow'] = np.where(dd['classification'] == 1, 1, 0)
+dd['classification_broad'] = np.where(dd['classification'] > 0, 1, 0)
+
+# create a jtfc (judgment text further cleaning) column, following cleaning advice on:
+# https://medium.com/@am.benatmane/keras-hyperparameter-tuning-using-sklearn-pipelines-grid-search-with-cross-
+# validation-ccfc74b0ce9f
+def remove_punct(text):
+    """remove some common punctuation, including full stops (which means that this col cannot be used for embedding"""
+    punctuations = '''!()-[]{};:'"\,<>./?@#$%^&*_~'''
+    for x in text.lower():
+        if x in punctuations:
+            text = text.replace(x, "")
+    return text
+
+def remove_urls(text):
+    """remove hypertext links"""
+    text = re.sub(r'^https?:\/\/.*[\r\n]*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^http?:\/\/.*[\r\n]*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^ftp?:\/\/.*[\r\n]*', '', text, flags=re.MULTILINE)
+    return text
+
+def remove_html_tags(text):
+    """remove html tags"""
+    clean = re.compile('<.*?>')
+    return re.sub(clean, '', text)
+
+dd['jtfc'] = dd['judgment_text'].map(str) \
+                            .map(lambda x: x.lower()) \
+                            .map(lambda x: x.strip()) \
+                            .map(lambda x: re.sub(r'\d+', '', x)) \
+                            .map(remove_punct) \
+                            .map(remove_urls) \
+                            .map(remove_html_tags)
+
+
+# create y and X (with two versions of X for use in embeddings-based and word freq-based models)
+X, y = dd[['judgment_text', 'jtfc']], dd['classification_narrow']
+
+# # # creating a tfidf model # # #
+
+#########¡¡¡¡¡¡€€€€€€€€###### RESTART WITH THE BELOW - YET TO TRIAL ANYTHING AND PACKAGES STILL PROB NEED IMPORTING
+# https://medium.com/@am.benatmane/keras-hyperparameter-tuning-using-sklearn-pipelines-grid-search-with-cross-validation-ccfc74b0ce9f
+
+from keras.layers import Dense, Input, Dropout
+
+def create_model(optimizer="adam", dropout=0.1, init='uniform', nbr_features=2500, dense_nparams=256):
+    model = Sequential()
+    model.add(Dense(dense_nparams, activation='relu', input_shape=(nbr_features,), kernel_initializer=init,))
+    model.add(Dropout(dropout), )
+    model.add(Dense(1, activation='sigmoid'))
+    model.compile(loss='binary_crossentropy', optimizer=optimizer,metrics=["accuracy"])
+    return model
+
+keras_estimator = KerasClassifier(build_fn=create_model, verbose=1)
+
+estimator = Pipeline([("tfidf", TfidfVectorizer(analyzer ="word",
+                                                max_features=2500,)),
+                       ('ss', StandardScaler(with_mean=False,)),
+                       ("kc", kears_estimator)])
+
+param_grid = {
+    'tfidf__ngram_range': [(1,1), (1,2), (2,2), (1,3)],
+    'tfidf__use_idf': [True, False],
+    'kc__epochs': [10, 100, ],
+    'kc__dense_nparams': [32, 256, 512],
+    'kc__init': [ 'uniform', 'zeros', 'normal', ],
+    'kc__batch_size':[2, 16, 32],
+    'kc__optimizer':['RMSprop', 'Adam', 'Adamax', 'sgd'],
+    'kc__dropout': [0.5, 0.4, 0.3, 0.2, 0.1, 0]
+}
+
+X = data.review
+y = data.sentiment
+kfold_splits = 5
+grid = GridSearchCV(estimator=estimator,
+                    n_jobs=-1,
+                    verbose=1,
+                    return_train_score=True,
+                    cv=kfold_splits,  #StratifiedKFold(n_splits=kfold_splits, shuffle=True)
+                    param_grid=param_grid,)
+
+grid_result = grid.fit(X, y, ) #callbacks=[tbCallBack]
+
+# summarize results
+print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
+means = grid_result.cv_results_['mean_test_score']
+stds = grid_result.cv_results_['std_test_score']
+params = grid_result.cv_results_['params']
+for mean, stdev, param in zip(means, stds, params):
+    print("%f (%f) with: %r" % (mean, stdev, param))
+
+
 
 # # # embedding # # #
 
 # load USE
 module_url = "https://tfhub.dev/google/universal-sentence-encoder-large/5"  # @param ["https://tfhub.dev/google/universal-sentence-encoder/4", "https://tfhub.dev/google/universal-sentence-encoder-large/5"]
 embed = hub.load(module_url)
-
-dd['classification_narrow'] = np.where(dd['classification'] == 1, 1, 0)
-dd['classification_broad'] = np.where(dd['classification'] > 0, 1, 0)
-X, y = dd['judgment_text'], dd['classification_narrow']
 
 all_mean_embs = pd.DataFrame()
 for jt in dd['judgment_text']:
