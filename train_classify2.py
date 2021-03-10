@@ -125,7 +125,7 @@ dd['jtfc'] = dd['judgment_text'].map(str) \
                             .map(lambda x: x.lower()) \
                             .map(lambda x: x.strip()) \
                             .map(lambda x: re.sub(r'\d+', '', x)) \
-                            .map(remove_html_tags) \
+                            #.map(remove_html_tags) \  # DUPLICATE WAS THERE IN RUN MODEL
                             .map(remove_first_n_words) \
                             .map(remove_punct) \
                             .map(stem_words)  # takes approx 8 mins run time
