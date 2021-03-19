@@ -125,7 +125,6 @@ dd['jtfc'] = dd['judgment_text'].map(str) \
                             .map(lambda x: x.lower()) \
                             .map(lambda x: x.strip()) \
                             .map(lambda x: re.sub(r'\d+', '', x)) \
-                            #.map(remove_html_tags) \  # DUPLICATE WAS THERE IN RUN MODEL
                             .map(remove_first_n_words) \
                             .map(remove_punct) \
                             .map(stem_words)  # takes approx 8 mins run time
@@ -157,7 +156,8 @@ X_train_tfidf = pd.concat([X_train['Link'].reset_index(drop=True), pd.DataFrame(
 
 X_test_tfidf = vectorizer.transform(X_test['jtfc']).toarray()
 X_test_tfidf = pd.concat([X_test['Link'].reset_index(drop=True), pd.DataFrame(X_test_tfidf)], axis=1)
-
+vectorizer.get_feature_names()  # create a dict from these that has the values 0:len(vectorizer.get_feature_names()) as the
+# keys and vectorizer.get_feature_names() as values
 
 # # # USE embeddings model prep
 
@@ -236,7 +236,55 @@ X_train_sBERT_embs = pd.merge(X_train['Link'], sBERT_embs, how='inner')
 X_test_sBERT_embs = pd.merge(X_test['Link'], sBERT_embs, how='inner')
 
 
-# # # model specification and tuning
+# # # model specification and tuning (sklearn)
+
+from sklearn.svm import SVC
+from sklearn.svm import LinearSVC
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import StratifiedKFold  # duplicated below
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score  # duplicated below
+
+d_d = [X_train_tfidf, X_test_tfidf]
+#max_f = d_d[0].shape[1]-1
+
+#svm = SVC()  this is non-linear and more complex
+svm = LinearSVC()
+params = {'C':[0.01, 0.1, 1, 10]}  # gamma not applicable to LinearSVC
+grid_search = GridSearchCV(svm, params, cv=StratifiedKFold(5), n_jobs=-1)
+grid_result = grid_search.fit(d_d[0].iloc[:, 1:], y_train)
+print("Best accuracy: {}\nBest combination: {}".format(grid_result.best_score_, grid_result.best_params_))
+# implement on test set (and cannot predict proba for LinearSVC unless further work: https://tapanpatro.medium.com/linearsvc-doesnt-have-predict-proba-ed8f48f47c55)
+y_pred = (grid_result.predict(d_d[1].iloc[:, 1:]) > 0.5).astype("int32")
+# show most influential coefficients
+best_lr = grid_result.best_estimator_
+coefs = best_lr.coef_
+inds_ascending = np.argsort(coefs.flatten())
+inds_descending = inds_ascending[::-1]
+
+# https://campus.datacamp.com/courses/linear-classifiers-in-python/loss-functions?ex=3 is good, but
+# you need to work 5-fold in here somehow - see here maybe: https://stackoverflow.com/questions/65760623/knn-and-svm-gridsearchcv-for-iris-dataset
+# svm.score(d_d[0].iloc[:, 1:], y_train)
+# https://towardsdatascience.com/support-vector-machine-python-example-d67d9b63f1c8 for a rel deep explanation of SVMs
+
+# NOW ONCE THE ABOVE RUNS, ADAPT FROM BELOW TO MAKE PREDICT ON YOUR TEST SET
+# y_pred = svm.predict(d_d[1].iloc[:, 1:])
+# svm.score(d_d[1].iloc[:, 1:], y_test)
+
+
+# now attempting to tune TfidfVectorizer simultaneously with the model itself
+
+# showing that stemming can be tuned through the tokenizer option: https://gist.github.com/deargle/b57738c8ce2b4ed6ca90f86d5422431f
+# showing that it is OK to lemma before n-gram selection (and perhaps preferable to allow this as an option, or even
+# just carry it out before tuning): https://stackoverflow.com/questions/47219389/compute-word-n-grams-on-original-text-or-after-lemma-stemming-process
+# when lemmatizing, you need to show context (and pos='v' is likely fine for this): https://www.datacamp.com/community/tutorials/stemming-lemmatization-python
+# re stop words lists: https://www.aclweb.org/anthology/W18-2502/
+
+# you need the lemmatization tuning options before n-gram tuning options
+
+
+
+
+# # # model specification and tuning (sklearn wrapper for Keras)
 
 from sklearn.model_selection import RandomizedSearchCV
 from keras.wrappers.scikit_learn import KerasClassifier
