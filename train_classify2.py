@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import tensorflow_hub as hub
-import re
 from urllib.request import urlopen
 import requests
 from bs4 import BeautifulSoup
@@ -17,6 +16,23 @@ import random
 from sklearn.model_selection import train_test_split
 from nltk.stem import PorterStemmer
 porter = PorterStemmer()
+import re
+from sklearn.svm import LinearSVC
+from sklearn.model_selection import GridSearchCV
+from time import time
+from sklearn.pipeline import Pipeline
+from sklearn.feature_extraction.text import TfidfVectorizer
+from nltk.stem import WordNetLemmatizer
+wordnet_lemmatizer = WordNetLemmatizer()
+from sklearn.model_selection import RandomizedSearchCV
+from keras.wrappers.scikit_learn import KerasClassifier
+from keras.layers import Dense, Dropout
+from sklearn.model_selection import StratifiedKFold  # more applicable than Kfold as unbalanced classes: http://ethen8181.github.io/machine-learning/model_selection/model_selection.html#K-Fold-Cross-Validation
+from keras import Sequential
+from keras.optimizers import Adam
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score
+from keras.constraints import maxnorm
+
 
 # # # always run the below, even if using a later data loading point
 
@@ -77,14 +93,6 @@ dd = pd.DataFrame(d)
 # create a jtfc (judgment text further cleaning) column, following cleaning advice on:
 # https://medium.com/@am.benatmane/keras-hyperparameter-tuning-using-sklearn-pipelines-grid-search-with-cross-
 # validation-ccfc74b0ce9f
-def remove_punct(text):
-    """remove some common punctuation, including full stops (which means that this col cannot be used for embedding"""
-    punctuations = '''!()-[]{};:'"\,<>./?@#$%^&*_~'''
-    for x in text.lower():
-        if x in punctuations:
-            text = text.replace(x, "")
-    return text
-
 def remove_urls(text):
     """remove hypertext links"""
     text = re.sub(r'^https?:\/\/.*[\r\n]*', '', text, flags=re.MULTILINE)
@@ -97,6 +105,14 @@ def remove_html_tags(text):
     clean = re.compile('<.*?>')
     return re.sub(clean, '', text)
 
+def remove_punct(text):
+    """remove some common punctuation, including full stops (which means that this col cannot be used for embedding"""
+    punctuations = '''!()-[]{};:'"\,<>./?@#$%^&*_©~'''  # added © after investigation
+    for x in text.lower():
+        if x in punctuations:
+            text = text.replace(x, "")
+    return text
+
 regex = re.compile(r'[\n\r\t\xa0\x0c]')
 def remove_first_n_words(text):
     """remove first n words, as they frequently contain html code and judges names"""
@@ -104,20 +120,18 @@ def remove_first_n_words(text):
     text = regex.sub("", text)
     return text
 
-punctuations="?:!.,;"
-english_words = set(nltk.corpus.words.words())
-def stem_words(text):
-    """stem each judgment, word-by-word, and drop any non-English words and remaining punctuation"""
-    stem_text = []
+english_words = set(nltk.corpus.words.words())  # and remove jury from here
+jury_words = {'jury', 'juries', 'jurying', 'juried', 'juror'}
+def retain_english(text):
+    """drop any non-English words"""
+    eng_text = []
     text_words = nltk.word_tokenize(text)
     for word in text_words:
-        if word in punctuations:
-            text_words.remove(word)
         if word in english_words:  # https://stackoverflow.com/questions/41290028/removing-non-english-words-from-text-using-python
-            stem_text.append(porter.stem(word))
-            stem_text.append(" ")
-    return "".join(stem_text)  # https://www.datacamp.com/community/tutorials/stemming-lemmatization-python
-
+            if word not in jury_words:
+                eng_text.append(word)
+                eng_text.append(" ")
+    return "".join(eng_text)
 
 dd['jtfc'] = dd['judgment_text'].map(str) \
                             .map(remove_urls) \
@@ -125,39 +139,22 @@ dd['jtfc'] = dd['judgment_text'].map(str) \
                             .map(lambda x: x.lower()) \
                             .map(lambda x: x.strip()) \
                             .map(lambda x: re.sub(r'\d+', '', x)) \
-                            .map(remove_first_n_words) \
                             .map(remove_punct) \
-                            .map(stem_words)  # takes approx 8 mins run time
+                            .map(remove_first_n_words) \
+                            .map(retain_english)  # takes approx 7 mins run time
 
 ##DATA SAVE POINT
-#dd.to_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text.csv', index=False)
-#dd.equals(pd.read_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text.csv'))  # shows save kept all info
+#dd.to_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text.csv', index=False)  # old stemmed text
+#dd.to_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_23Mar.csv', index=False)
 ##DATA LOAD POINT
-#dd = pd.read_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text.csv')
+#dd = pd.read_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_23Mar.csv')
 
 # add jthc to your X_train selection
-dd.columns = ['Link', 'case_name', 'year', 'classification_narrow', 'word_count_pre_stem', 'judgment_text', 'jtfc']
+dd.columns = ['Link', 'case_name', 'year', 'classification_narrow', 'word_count_pre_stem', 'judgment_text', 'jtfc']  # to
+# rename 'link'
 X_train = pd.merge(X_train, dd, how="inner")
 X_test = pd.merge(X_test, dd, how="inner")
 
-from sklearn.model_selection import RandomizedSearchCV
-import re
-from sklearn.feature_extraction.text import TfidfVectorizer
-from keras.wrappers.scikit_learn import KerasClassifier
-from sklearn.model_selection import StratifiedKFold  # more applicable than Kfold as unbalanced classes: http://ethen8181.github.io/machine-learning/model_selection/model_selection.html#K-Fold-Cross-Validation
-from keras.layers import Dense
-
-max_f = 768
-vectorizer = TfidfVectorizer(max_df=0.8, max_features=max_f, ngram_range=(1, 1))  # Medvedeva art: "For most articles
-# unigrams achieved the highest results"
-vectorizer.fit(X_train['jtfc'])  # quick to run, so use load point from above
-X_train_tfidf = vectorizer.transform(X_train['jtfc']).toarray()  # https://stackoverflow.com/questions/62871108/error-with-tfidfvectorizer-but-ok-with-countvectorizer
-X_train_tfidf = pd.concat([X_train['Link'].reset_index(drop=True), pd.DataFrame(X_train_tfidf)], axis=1)
-
-X_test_tfidf = vectorizer.transform(X_test['jtfc']).toarray()
-X_test_tfidf = pd.concat([X_test['Link'].reset_index(drop=True), pd.DataFrame(X_test_tfidf)], axis=1)
-vectorizer.get_feature_names()  # create a dict from these that has the values 0:len(vectorizer.get_feature_names()) as the
-# keys and vectorizer.get_feature_names() as values
 
 # # # USE embeddings model prep
 
@@ -167,12 +164,17 @@ embed = hub.load(module_url)
 
 all_mean_embs = pd.DataFrame()
 for jt in dd['judgment_text']:
+    m = 0
+    n = 0
     wt_list = []
     wt_list.append(sent_tokenize(jt))
     wt_list_vals = pd.DataFrame(wt_list).values
     wt_list_vals = wt_list_vals.flatten()
     print("Original judgment sentence count is " + str(len(wt_list_vals)))
-    wt_list_vals = [wt for wt in wt_list_vals if len(wt) < 1000]  # changed to 1000 from 2000
+    while m < 199:
+        m += len(wt_list_vals[n].split())
+        n += 1
+    wt_list_vals = [wt for wt in wt_list_vals[n:] if len(wt) < 1000]
     if len(wt_list_vals) > 5000:
         random.seed(1)
         wt_list_vals = random.sample(wt_list_vals, 5000)
@@ -187,9 +189,11 @@ for jt in dd['judgment_text']:
     print("Done " + str(len(all_mean_embs)) + " embedding averages")
 
 # DATA SAVING POINT BELOW
-#all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/labelled_embeddings8Jan.csv')  # written 08.01.2021
+###all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/labelled_embeddings8Jan.csv')  # written 08.01.2021
+#all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/USE_embeddings24Mar.csv')  # written 08.01.2021
 # DATA LOADING POINT BELOW
-#all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/labelled_embeddings8Jan.csv')
+###all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/labelled_embeddings8Jan.csv')
+#all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/USE_embeddings24Mar.csv')
 #all_mean_embs = all_mean_embs.iloc[:, 1:]
 
 USE_embs = pd.concat([all_mean_embs, df['Link'].reset_index(drop=True)], axis=1)  # adding link onto end of USE_embs
@@ -207,12 +211,17 @@ model = SentenceTransformer('bert-base-nli-mean-tokens')  # outputs a 768-dimens
 
 all_mean_embs = pd.DataFrame()
 for jt in dd['judgment_text']:
+    m = 0
+    n = 0
     wt_list = []
     wt_list.append(sent_tokenize(jt))
     wt_list_vals = pd.DataFrame(wt_list).values
     wt_list_vals = wt_list_vals.flatten()
     print("Original judgment sentence count is " + str(len(wt_list_vals)))
-    wt_list_vals = [wt for wt in wt_list_vals if len(wt) < 1000]
+    while m < 199:
+        m += len(wt_list_vals[n].split())
+        n += 1
+    wt_list_vals = [wt for wt in wt_list_vals[n:] if len(wt) < 1000]
     if len(wt_list_vals) > 5000:
         random.seed(1)
         wt_list_vals = random.sample(wt_list_vals, 5000)
@@ -227,8 +236,10 @@ for jt in dd['judgment_text']:
 
 # DATA SAVING POINT BELOW
 #all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings1Mar.csv')
+#all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings22Mar.csv')
 # DATA LOADING POINT BELOW
 #all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings1Mar.csv')
+#all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings22Mar.csv')
 #all_mean_embs = all_mean_embs.iloc[:, 1:]
 
 sBERT_embs = pd.concat([all_mean_embs, df['Link'].reset_index(drop=True)], axis=1)  # adding link onto end of sBERT_embs
@@ -236,94 +247,154 @@ X_train_sBERT_embs = pd.merge(X_train['Link'], sBERT_embs, how='inner')
 X_test_sBERT_embs = pd.merge(X_test['Link'], sBERT_embs, how='inner')
 
 
-# # # model specification and tuning (sklearn)
+# # # model 1: tuned linearSVC with tuned tfidfVectorizer for jtfc
 
-from sklearn.svm import SVC
-from sklearn.svm import LinearSVC
-from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import StratifiedKFold  # duplicated below
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score  # duplicated below
-
-d_d = [X_train_tfidf, X_test_tfidf]
-#max_f = d_d[0].shape[1]-1
-
-#svm = SVC()  this is non-linear and more complex
-svm = LinearSVC()
-params = {'C':[0.01, 0.1, 1, 10]}  # gamma not applicable to LinearSVC
-grid_search = GridSearchCV(svm, params, cv=StratifiedKFold(5), n_jobs=-1)
-grid_result = grid_search.fit(d_d[0].iloc[:, 1:], y_train)
-print("Best accuracy: {}\nBest combination: {}".format(grid_result.best_score_, grid_result.best_params_))
-# implement on test set (and cannot predict proba for LinearSVC unless further work: https://tapanpatro.medium.com/linearsvc-doesnt-have-predict-proba-ed8f48f47c55)
-y_pred = (grid_result.predict(d_d[1].iloc[:, 1:]) > 0.5).astype("int32")
-# show most influential coefficients
-best_lr = grid_result.best_estimator_
-coefs = best_lr.coef_
-inds_ascending = np.argsort(coefs.flatten())
-inds_descending = inds_ascending[::-1]
-
-# https://campus.datacamp.com/courses/linear-classifiers-in-python/loss-functions?ex=3 is good, but
-# you need to work 5-fold in here somehow - see here maybe: https://stackoverflow.com/questions/65760623/knn-and-svm-gridsearchcv-for-iris-dataset
-# svm.score(d_d[0].iloc[:, 1:], y_train)
-# https://towardsdatascience.com/support-vector-machine-python-example-d67d9b63f1c8 for a rel deep explanation of SVMs
-
-# NOW ONCE THE ABOVE RUNS, ADAPT FROM BELOW TO MAKE PREDICT ON YOUR TEST SET
-# y_pred = svm.predict(d_d[1].iloc[:, 1:])
-# svm.score(d_d[1].iloc[:, 1:], y_test)
-
-
-# now attempting to tune TfidfVectorizer simultaneously with the model itself
-
-# showing that stemming can be tuned through the tokenizer option: https://gist.github.com/deargle/b57738c8ce2b4ed6ca90f86d5422431f
-# showing that it is OK to lemma before n-gram selection (and perhaps preferable to allow this as an option, or even
+# Showing that stemming can be tuned through the tokenizer option: https://gist.github.com/deargle/b57738c8ce2b4ed6ca90f86d5422431f
+# Showing that it is OK to lemma before n-gram selection (and perhaps preferable to allow this as an option, or even
 # just carry it out before tuning): https://stackoverflow.com/questions/47219389/compute-word-n-grams-on-original-text-or-after-lemma-stemming-process
-# when lemmatizing, you need to show context (and pos='v' is likely fine for this): https://www.datacamp.com/community/tutorials/stemming-lemmatization-python
-# re stop words lists: https://www.aclweb.org/anthology/W18-2502/
+# When lemmatizing, you need to show context (and pos='v' is likely fine for this): https://www.datacamp.com/community/tutorials/stemming-lemmatization-python
 
-# you need the lemmatization tuning options before n-gram tuning options
+def lemmatizer(text):
+    words = [word for word in nltk.word_tokenize(text) if len(word) > 1]  # if len(word) > 1 to retain words 2+ characters long
+    lemmas = [wordnet_lemmatizer.lemmatize(w, pos="v") for w in words]
+    return lemmas
+
+pipeline = Pipeline([
+    ('tfidf', TfidfVectorizer(analyzer='word')),
+    ('clf', LinearSVC())
+])  # https://towardsdatascience.com/support-vector-machine-python-example-d67d9b63f1c8 for rel deep explanation of SVMs
+
+parameters = {
+
+    'tfidf__tokenizer': (lemmatizer, None),
+    # 'tfidf__stop_words': (None, 'english'),  # used by Medvedeva, but you are lemmatizing so this does not apply
+    # cleanly and you do similar with max_df (which Medvedeva does not use)
+    'tfidf__ngram_range': [(1, 1), (1, 2)],
+    'tfidf__max_df': (0.6, 0.7, 0.8),  # ignore ngrams that occur as more than .X of corpus
+    'tfidf__min_df': (1, 2, 3),  # ignore ngrams featuring in less than 1, 2, 3 documents
+    # 'tfidf__use_idf': (False, True),  # not tempted by this, but used by Medvedeva
+    # 'tfidf__binary': (False, True),  # not tempted by this, but used by Medvedeva
+    # 'tfidf__norm': (None, 'l1', 'l2'),  # not tempted by this, but used by Medvedeva
+    'tfidf__max_features': (1000, 2000),  # Medvedeva permitted uncapped but this likely helps here given limited data
+
+    'clf__C': (0.1, 1, 5)
+
+}
+
+cv = RandomizedSearchCV(pipeline, param_distributions=parameters, cv=StratifiedKFold(5), n_iter=10, n_jobs=-1, verbose=1, random_state=1)
+t0 = time()
+cv.fit(X_train['jtfc'], y_train)
+print("tfidf model tuned in %0.2f mins" % ((time() - t0)/60))  # to show total time taken for training
+# note that run time increases approx 1 min for each additional n_iter
+print("Tuned model parameters: {}".format(cv.best_params_))  # Medvedeva art: "For most articles unigrams achieved the
+# highest results"
+print("Average tuned model cv score: {}".format(cv.best_score_))
+
+y_pred = cv.predict(X_test['jtfc'])  # note you cannot predict proba for LinearSVC unless further
+# work: https://tapanpatro.medium.com/linearsvc-doesnt-have-predict-proba-ed8f48f47c55
+print("Accuracy: {}".format(cv.score(X_test['jtfc'], y_test)))
+print(classification_report(y_test, y_pred))
+
+# Below draws from: https://towardsdatascience.com/how-to-get-feature-importances-from-any-sklearn-pipeline-167a19f1214
+# And the following source could also be checked:
+# https://towardsdatascience.com/extracting-plotting-feature-names-importance-from-scikit-learn-pipelines-eb5bfa6a31f4
+final_model = cv.best_estimator_
+feature_names = final_model.named_steps['tfidf'].get_feature_names()
+coefs = final_model.named_steps["clf"].coef_.flatten()
+zipped = zip(feature_names, coefs)
+df = pd.DataFrame(zipped, columns=["feature", "value"])
+df["abs_value"] = df["value"].apply(lambda x: abs(x))
+df = df.sort_values("value", ascending=False)  # note the presence of animal in the list, which is there as 'animal'
+# removed from some training set judgments as it was just in the first 200 words of the judgment in each case
+
+# plot features that
+import matplotlib.pyplot as plt
+df_upper = df.head(10)
+df_upper = df_upper.sort_values("value", ascending=True)
+plt.bar(x=df_upper['feature'],
+        height=df_upper['abs_value'],
+        color='steelblue')
+plt.xticks(rotation=90)
+plt.ylabel("absolute coefficient value")
+plt.title("Features most predictive of animal protection law")
+plt.show()
+
+df_lower = df.tail(10)
+df_lower = df_lower.sort_values("abs_value", ascending=False)
+plt.bar(x=df_lower['feature'],
+        height=df_lower['abs_value'],
+        color='indianred')
+plt.xticks(rotation=90)
+plt.ylabel("absolute coefficient value")
+plt.title("Features most predictive of not animal protection law")
+plt.show()
 
 
+# # # models 2 and 3: tuned linearSVC for USE and tuned linearSVC for sBERT
+
+data_dict = {
+                'use_sets': [X_train_USE_embs, X_test_USE_embs],
+                'sbert_sets': [X_train_sBERT_embs, X_test_sBERT_embs]
+}  # creating a data_dict using the pre-created (or, pre-loaded) embeddings
+
+svm = LinearSVC(max_iter=10000)  # increasing max_iter (suggested by convergence fail error message when running sBERT,
+# and one of the multiple poss options given here: https://stackoverflow.com/questions/52670012/convergencewarning-liblinear-failed-to-converge-increase-the-number-of-iterati
+params = {'C': (0.1, 1, 5)}  # gamma not applicable to LinearSVC
+grid_search = GridSearchCV(svm, params, cv=StratifiedKFold(5), n_jobs=-1, verbose=1)
+for d_d in data_dict:
+    grid_result = grid_search.fit(data_dict[d_d][0].iloc[:, 1:], y_train)
+    print("Tuned model parameters: {}".format(grid_result.best_params_))
+    print("Average tuned model cv score: {}".format(grid_result.best_score_))
+    # implement on test set (and cannot predict proba for LinearSVC unless further work: https://tapanpatro.medium.com/linearsvc-doesnt-have-predict-proba-ed8f48f47c55)
+    y_pred = (grid_result.predict(data_dict[d_d][1].iloc[:, 1:]) > 0.5).astype("int32")
+    print("Accuracy: {}".format(grid_result.score(data_dict[d_d][1].iloc[:, 1:], y_test)))
+    print(classification_report(y_test, y_pred))
+    print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
+    # print(f1_score(y_pred, y_test, average="weighted"))  # https://stackoverflow.com/questions/33326810/scikit-weighted-f1-score-calculation-and-usage
+    print(f1_score(y_pred, y_test, average="macro"))
+    print(accuracy_score(y_pred, y_test))
 
 
-# # # model specification and tuning (sklearn wrapper for Keras)
+# # # models 4 and 5: tuned keras for USE and tuned keras for sBERT
 
-from sklearn.model_selection import RandomizedSearchCV
-from keras.wrappers.scikit_learn import KerasClassifier
-from keras.layers import Dense
-from sklearn.model_selection import StratifiedKFold  # more applicable than Kfold as unbalanced classes: http://ethen8181.github.io/machine-learning/model_selection/model_selection.html#K-Fold-Cross-Validation
-from keras import Sequential
-from keras.optimizers import Adam
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score
+# if playing with tfidf vector (tuned for sklearn linearSVC), then run the following:
+#vectorizer = final_model.named_steps['tfidf']
+#X_train_tfidf = vectorizer.transform(X_train['jtfc']).toarray()  # https://stackoverflow.com/questions/62871108/error-with-tfidfvectorizer-but-ok-with-countvectorizer
+#X_train_tfidf = pd.concat([X_train['Link'].reset_index(drop=True), pd.DataFrame(X_train_tfidf)], axis=1)
+#X_test_tfidf = vectorizer.transform(X_test['jtfc']).toarray()
+#X_test_tfidf = pd.concat([X_test['Link'].reset_index(drop=True), pd.DataFrame(X_test_tfidf)], axis=1)
 
 # define create_model
-def create_model(learning_rate, activation, dense_nparams):  # then add batch size later, leaving no. of layers and layer order constant
+def create_model(learning_rate, activation, dense_nparams, dropout):  # leaving no. of layers and layer order constant
     opt = Adam(lr=learning_rate)  # create an Adam optimizer with the given learning rate
     model = Sequential()
-    model.add(Dense(dense_nparams, input_shape=(max_f,), activation=activation))  # create input layer
-    #model.add(Dropout(dropout), )
+    model.add(Dropout(dropout, input_shape=(max_f,)))  # https://machinelearningmastery.com/dropout-regularization-deep-learning-models-keras/
+    model.add(Dense(dense_nparams, activation=activation, kernel_constraint=maxnorm(dropout*15)))  # create input layer
+    model.add(Dropout(dropout))
     model.add(Dense(1, activation='sigmoid'))  # create output layer
     model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['accuracy'])  # compile model with optimizer, loss, and metrics
     return model
 
-
 # create a test-set and train-set dict
 data_dict = {
-    'tfidf': [X_train_tfidf, X_test_tfidf],
     'USE_embs': [X_train_USE_embs, X_test_USE_embs],
-    'sBERT_embs': [X_train_sBERT_embs, X_test_sBERT_embs],
+    'sBERT_embs': [X_train_sBERT_embs, X_test_sBERT_embs] # ,
+    #'tfidf': [X_train_tfidf, X_test_tfidf],  # tfidf vectors not used here, but note https://stackoverflow.com/questions/62871108/error-with-tfidfvectorizer-but-ok-with-countvectorizer
 }
 
-
+#d_d = [X_train_tfidf, X_test_tfidf]  # temporarily here to enable quick re-running of specific embs
 for d_d in data_dict:
 
     max_f = data_dict[d_d][0].shape[1]-1
+    #max_f = d_d[0].shape[1] - 1
 
     param_grid = {
         'epochs': [20, 50, 100, 200],
         'dense_nparams': [max_f / 16, max_f / 8, max_f / 4, max_f / 2],
-        'batch_size': [1, 5, 10],
+        #'batch_size': [1, 5, 10],
         'learning_rate': [0.1, 0.01, 0.001],
-        'activation': ['relu']
-        # 'dropout': [0.1, 0]
+        'activation': ['relu'],
+        'dropout': [0.2, 0]  # DROPOUT REFS https://machinelearningmastery.com/dropout-regularization-deep-learning-models-keras/
     }  # define param_grid after max_f so it uses the current max_f value
 
     model = KerasClassifier(build_fn=create_model)
@@ -332,19 +403,23 @@ for d_d in data_dict:
     seed(1)  # from numpy again I think so poss duplicating
     tensorflow.random.set_seed(1)  # from tf
     random_search = RandomizedSearchCV(model, param_distributions=param_grid, cv=StratifiedKFold(5), n_jobs=-1,
-                                       random_state=1)  # ... but cannot be fully reproducible as not single threaded: https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development  https://datascience.stackexchange.com/questions/37413/why-running-the-same-code-on-the-same-data-gives-a-different-result-every-time
-
+                                       n_iter=10, random_state=1)  # ... but cannot be fully reproducible as not single threaded: https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development  https://datascience.stackexchange.com/questions/37413/why-running-the-same-code-on-the-same-data-gives-a-different-result-every-time
+                                        # TEMP REDUCED TO N_ITER=5
+    # ran_result = random_search.fit(d_d[0].iloc[:, 1:], y_train, verbose=0)  # takes 5-10 minutes
     ran_result = random_search.fit(data_dict[d_d][0].iloc[:, 1:], y_train, verbose=0)  # takes 5-10 minutes
     print("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
 
     loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_" + d_d + ".hdf5"  # added 'new_' to ensure already-run models are kept
+    #loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_temp.hdf5"
     ran_result.best_estimator_.model.save(loc_string)
 
     best_model = tensorflow.keras.models.load_model(loc_string)  # https://www.tensorflow.org/api_docs/python/tf/
     # keras/models/load_model  # compile=True appears not to be required
 
     y_pred_proba = best_model.predict(data_dict[d_d][1].iloc[:, 1:])  # in case prediction info is required
+    #y_pred_proba = best_model.predict(d_d[1].iloc[:, 1:])  # in case prediction info is required
     y_pred = (best_model.predict(data_dict[d_d][1].iloc[:, 1:]) > 0.5).astype("int32")
+    #y_pred = (best_model.predict(d_d[1].iloc[:, 1:]) > 0.5).astype("int32")
 
     print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
     print(classification_report(y_pred, y_test))
@@ -352,6 +427,8 @@ for d_d in data_dict:
     print(f1_score(y_pred, y_test, average="macro"))
     print(accuracy_score(y_pred, y_test))
 
+
+# # #
 
 # show base model performance (i.e., everything as class 1)
 bool_pred = (y_test + 1) / (y_test + 1)
