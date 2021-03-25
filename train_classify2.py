@@ -32,7 +32,7 @@ from keras import Sequential
 from keras.optimizers import Adam
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score
 from keras.constraints import maxnorm
-
+from joblib import dump, load
 
 # # # always run the below, even if using a later data loading point
 
@@ -162,7 +162,7 @@ X_test = pd.merge(X_test, dd, how="inner")
 module_url = "https://tfhub.dev/google/universal-sentence-encoder-large/5"  # @param ["https://tfhub.dev/google/universal-sentence-encoder/4", "https://tfhub.dev/google/universal-sentence-encoder-large/5"]
 embed = hub.load(module_url)
 
-all_mean_embs = pd.DataFrame()
+all_mean_embs = pd.DataFrame()  # takes approx 2.5 hrs
 for jt in dd['judgment_text']:
     m = 0
     n = 0
@@ -190,7 +190,7 @@ for jt in dd['judgment_text']:
 
 # DATA SAVING POINT BELOW
 ###all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/labelled_embeddings8Jan.csv')  # written 08.01.2021
-#all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/USE_embeddings24Mar.csv')  # written 08.01.2021
+#all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/USE_embeddings24Mar.csv')  # written 23.03.2021
 # DATA LOADING POINT BELOW
 ###all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/labelled_embeddings8Jan.csv')
 #all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/USE_embeddings24Mar.csv')
@@ -209,7 +209,7 @@ from sentence_transformers import SentenceTransformer
 # large bert too slow, base bert being used to increase speed. (Appears approx 5x the speed at about 80 judgments/hour)
 model = SentenceTransformer('bert-base-nli-mean-tokens')  # outputs a 768-dimensional vector
 
-all_mean_embs = pd.DataFrame()
+all_mean_embs = pd.DataFrame()  # takes approx 8 hrs
 for jt in dd['judgment_text']:
     m = 0
     n = 0
@@ -238,7 +238,7 @@ for jt in dd['judgment_text']:
 #all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings1Mar.csv')
 #all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings22Mar.csv')
 # DATA LOADING POINT BELOW
-#all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings1Mar.csv')
+##all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings1Mar.csv')
 #all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings22Mar.csv')
 #all_mean_embs = all_mean_embs.iloc[:, 1:]
 
@@ -281,24 +281,32 @@ parameters = {
 
 }
 
-cv = RandomizedSearchCV(pipeline, param_distributions=parameters, cv=StratifiedKFold(5), n_iter=10, n_jobs=-1, verbose=1, random_state=1)
+cv = RandomizedSearchCV(pipeline, param_distributions=parameters, cv=StratifiedKFold(5), n_iter=300, n_jobs=-1, verbose=1, random_state=1)
 t0 = time()
 cv.fit(X_train['jtfc'], y_train)
 print("tfidf model tuned in %0.2f mins" % ((time() - t0)/60))  # to show total time taken for training
 # note that run time increases approx 1 min for each additional n_iter
-print("Tuned model parameters: {}".format(cv.best_params_))  # Medvedeva art: "For most articles unigrams achieved the
-# highest results"
-print("Average tuned model cv score: {}".format(cv.best_score_))
+print("Best accuracy: {}\nBest combination: {}".format(cv.best_score_, cv.best_params_))  # Medvedeva art: "For most
+# articles unigrams achieved the highest results"
+with open("/Users/joewatson/Desktop/animal_law_classifier/tfidf_score_params.txt", "w") as text_file:
+    text_file.write("Best accuracy: {}\nBest combination: {}".format(cv.best_score_, cv.best_params_))
 
-y_pred = cv.predict(X_test['jtfc'])  # note you cannot predict proba for LinearSVC unless further
+final_model = cv.best_estimator_
+
+# # save model
+#loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf.hdf5"  # added 'new_' to ensure already-run models are kept
+#dump(cv.best_estimator_, loc_string)
+# # load model
+#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf.hdf5')
+
+y_pred = final_model.predict(X_test['jtfc'])  # note you cannot predict proba for LinearSVC unless further
 # work: https://tapanpatro.medium.com/linearsvc-doesnt-have-predict-proba-ed8f48f47c55
-print("Accuracy: {}".format(cv.score(X_test['jtfc'], y_test)))
+print("Accuracy: {}".format(final_model.score(X_test['jtfc'], y_test)))
 print(classification_report(y_test, y_pred))
 
 # Below draws from: https://towardsdatascience.com/how-to-get-feature-importances-from-any-sklearn-pipeline-167a19f1214
 # And the following source could also be checked:
 # https://towardsdatascience.com/extracting-plotting-feature-names-importance-from-scikit-learn-pipelines-eb5bfa6a31f4
-final_model = cv.best_estimator_
 feature_names = final_model.named_steps['tfidf'].get_feature_names()
 coefs = final_model.named_steps["clf"].coef_.flatten()
 zipped = zip(feature_names, coefs)
@@ -403,11 +411,15 @@ for d_d in data_dict:
     seed(1)  # from numpy again I think so poss duplicating
     tensorflow.random.set_seed(1)  # from tf
     random_search = RandomizedSearchCV(model, param_distributions=param_grid, cv=StratifiedKFold(5), n_jobs=-1,
-                                       n_iter=10, random_state=1)  # ... but cannot be fully reproducible as not single threaded: https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development  https://datascience.stackexchange.com/questions/37413/why-running-the-same-code-on-the-same-data-gives-a-different-result-every-time
-                                        # TEMP REDUCED TO N_ITER=5
+                                       n_iter=100, random_state=1)  # ... but cannot be fully reproducible as not single threaded: https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development  https://datascience.stackexchange.com/questions/37413/why-running-the-same-code-on-the-same-data-gives-a-different-result-every-time
+                                        # increased n_iter from 10 to 100 for final modelling
     # ran_result = random_search.fit(d_d[0].iloc[:, 1:], y_train, verbose=0)  # takes 5-10 minutes
     ran_result = random_search.fit(data_dict[d_d][0].iloc[:, 1:], y_train, verbose=0)  # takes 5-10 minutes
     print("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
+
+    loc_string = "/Users/joewatson/Desktop/animal_law_classifier/" + d_d + "_score_params.txt"
+    with open(loc_string, "w") as text_file:
+        text_file.write("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
 
     loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_" + d_d + ".hdf5"  # added 'new_' to ensure already-run models are kept
     #loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_temp.hdf5"
@@ -437,6 +449,9 @@ print(classification_report(bool_pred, y_test))
 # print(f1_score(bool_pred, y_test, average="weighted"))  # https://stackoverflow.com/questions/37358496/is-f1-micro-the-same-as-accuracy
 print(f1_score(bool_pred, y_test, average="macro"))
 print(accuracy_score(bool_pred, y_test))
+
+
+# # # permutation tests - to be added
 
 # # # links to already-run models
 
