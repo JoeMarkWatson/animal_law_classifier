@@ -121,7 +121,11 @@ def remove_first_n_words(text):
     return text
 
 english_words = set(nltk.corpus.words.words())  # and remove jury from here
+jury_words = {}
 jury_words = {'jury', 'juries', 'jurying', 'juried', 'juror'}
+#jury_words = {'jury', 'juries', 'jurying', 'juried', 'juror',
+#              'schedule', 'scheduls', 'scheduling', 'scheduled', 'scheduler',
+#              'investigation', 'investigations', 'investigating', 'investigated', 'investigator'}
 def retain_english(text):
     """drop any non-English words"""
     eng_text = []
@@ -146,8 +150,10 @@ dd['jtfc'] = dd['judgment_text'].map(str) \
 ##DATA SAVE POINT
 #dd.to_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text.csv', index=False)  # old stemmed text
 #dd.to_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_23Mar.csv', index=False)
+#dd.to_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_Apr_JuryIn.csv', index=False)
 ##DATA LOAD POINT
 #dd = pd.read_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_23Mar.csv')
+#dd = pd.read_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_Apr_JuryIn.csv')
 
 # add jthc to your X_train selection
 dd.columns = ['Link', 'case_name', 'year', 'classification_narrow', 'word_count_pre_stem', 'judgment_text', 'jtfc']  # to
@@ -266,43 +272,56 @@ pipeline = Pipeline([
 
 parameters = {
 
-    'tfidf__tokenizer': (lemmatizer, None),
+    'tfidf__tokenizer': (lemmatizer, None),  # [(lemmatizer)]
     # 'tfidf__stop_words': (None, 'english'),  # used by Medvedeva, but you are lemmatizing so this does not apply
     # cleanly and you do similar with max_df (which Medvedeva does not use)
-    'tfidf__ngram_range': [(1, 1), (1, 2)],
-    'tfidf__max_df': (0.6, 0.7, 0.8),  # ignore ngrams that occur as more than .X of corpus
-    'tfidf__min_df': (1, 2, 3),  # ignore ngrams featuring in less than 1, 2, 3 documents
+    'tfidf__ngram_range': [(1, 1), (1, 2)],  # [(1, 1)]
+    'tfidf__max_df': (0.6, 0.7, 0.8),  # ignore ngrams that occur as more than .X of corpus  # (0.6, 0.7, 0.8)
+    'tfidf__min_df': (1, 2, 3),  # ignore ngrams featuring in less than 1, 2, 3 documents  # ([1])
     # 'tfidf__use_idf': (False, True),  # not tempted by this, but used by Medvedeva
     # 'tfidf__binary': (False, True),  # not tempted by this, but used by Medvedeva
     # 'tfidf__norm': (None, 'l1', 'l2'),  # not tempted by this, but used by Medvedeva
-    'tfidf__max_features': (1000, 2000),  # Medvedeva permitted uncapped but this likely helps here given limited data
+    'tfidf__max_features': (500, 1000),  # Medvedeva permitted uncapped but this likely helps here given limited data
 
-    'clf__C': (0.1, 1, 5)
+    'clf__C': (0.1, 1, 2, 5)  # 1, 2, 5
 
 }
 
-cv = RandomizedSearchCV(pipeline, param_distributions=parameters, cv=StratifiedKFold(5), n_iter=300, n_jobs=-1, verbose=1, random_state=1)
+cv = RandomizedSearchCV(pipeline, param_distributions=parameters, cv=StratifiedKFold(5), n_iter=800, n_jobs=-1,
+                        verbose=1, random_state=1, scoring='f1_macro', refit='f1_macro')  # to potentially report F1: https://scikit-learn.org/stable/modules/model_evaluation.html
+# return_train_score=True gives by-split score results
 t0 = time()
 cv.fit(X_train['jtfc'], y_train)
 print("tfidf model tuned in %0.2f mins" % ((time() - t0)/60))  # to show total time taken for training
 # note that run time increases approx 1 min for each additional n_iter
-print("Best accuracy: {}\nBest combination: {}".format(cv.best_score_, cv.best_params_))  # Medvedeva art: "For most
+print("Best f1_macro: {}\nBest combination: {}".format(cv.best_score_, cv.best_params_))  # Medvedeva art: "For most
 # articles unigrams achieved the highest results"
-with open("/Users/joewatson/Desktop/animal_law_classifier/tfidf_score_params.txt", "w") as text_file:
-    text_file.write("Best accuracy: {}\nBest combination: {}".format(cv.best_score_, cv.best_params_))
+with open("/Users/joewatson/Desktop/animal_law_classifier/tfidf_score_params14Apr_5to1_jury_in.txt", "w") as text_file:
+    text_file.write("Best f1_macro: {}\nBest combination: {}".format(cv.best_score_, cv.best_params_))
 
 final_model = cv.best_estimator_
 
 # # save model
-#loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf.hdf5"  # added 'new_' to ensure already-run models are kept
-#dump(cv.best_estimator_, loc_string)
+loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf14Apr_5to1_jury_in.hdf5"  # added 'new_' to ensure already-run models are kept
+dump(cv.best_estimator_, loc_string)
+
+# above running to here # check in morning
+
+
 # # load model
-#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf.hdf5')
+#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf.hdf5')  # tuned on accuracy
+#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf7Apr.hdf5')   # tuned on f1
+#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf7Apr_5to1.hdf5')  # f1 and 5-1k
+#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf7Apr_1to2_no_inv.hdf5')  # f1 and longer 'jury words' list
+#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf14Apr_5to1_jury_in.hdf5')  # f1 and longer 'jury words' list
 
 y_pred = final_model.predict(X_test['jtfc'])  # note you cannot predict proba for LinearSVC unless further
 # work: https://tapanpatro.medium.com/linearsvc-doesnt-have-predict-proba-ed8f48f47c55
 print("Accuracy: {}".format(final_model.score(X_test['jtfc'], y_test)))
 print(classification_report(y_test, y_pred))
+print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
+print(f1_score(y_pred, y_test, average="macro"))
+print(accuracy_score(y_pred, y_test))
 
 # Below draws from: https://towardsdatascience.com/how-to-get-feature-importances-from-any-sklearn-pipeline-167a19f1214
 # And the following source could also be checked:
@@ -337,6 +356,16 @@ plt.ylabel("absolute coefficient value")
 plt.title("Features most predictive of not animal protection law")
 plt.show()
 
+pos_neg_df = pd.concat([df_lower, df_upper]).reset_index(drop=True)  # pos and neg on one graphic
+pos_neg_df['p_n_pred'] = np.where(pos_neg_df['value'] > 0.5, 'steelblue', 'indianred')
+plt.bar(x=pos_neg_df['feature'],
+        height=pos_neg_df['value'],
+        color=pos_neg_df['p_n_pred'])
+plt.xticks(rotation=90)
+plt.ylabel("coefficient value")
+plt.title("Most positive and negative lemma coefficient values")
+plt.show()
+
 
 # # # models 2 and 3: tuned linearSVC for USE and tuned linearSVC for sBERT
 
@@ -347,15 +376,24 @@ data_dict = {
 
 svm = LinearSVC(max_iter=10000)  # increasing max_iter (suggested by convergence fail error message when running sBERT,
 # and one of the multiple poss options given here: https://stackoverflow.com/questions/52670012/convergencewarning-liblinear-failed-to-converge-increase-the-number-of-iterati
-params = {'C': (0.1, 1, 5)}  # gamma not applicable to LinearSVC
-grid_search = GridSearchCV(svm, params, cv=StratifiedKFold(5), n_jobs=-1, verbose=1)
+params = {'C': (0.1, 1, 2, 5, 10)}  # gamma not applicable to LinearSVC
+
+grid_search = GridSearchCV(svm, params, cv=StratifiedKFold(5), n_jobs=-1, verbose=1, scoring='f1_macro', refit='f1_macro')
 for d_d in data_dict:
     grid_result = grid_search.fit(data_dict[d_d][0].iloc[:, 1:], y_train)
-    print("Tuned model parameters: {}".format(grid_result.best_params_))
-    print("Average tuned model cv score: {}".format(grid_result.best_score_))
+    print("Best f1_macro: {}\nBest combination: {}".format(grid_result.best_score_, grid_result.best_params_))
+    # save model and best params
+    loc_string = "/Users/joewatson/Desktop/animal_law_classifier/sk_" + d_d + "_score_params7Apr.txt"
+    with open(loc_string, "w") as text_file:
+        text_file.write("Best macro_f1: {}\nBest combination: {}".format(grid_result.best_score_, grid_result.best_params_))
+    loc_string = "/Users/joewatson/Desktop/LawTech/new_search_sk_" + d_d + "7Apr.hdf5"
+    dump(grid_search.best_estimator_, loc_string)
+    # load model
+    #grid_result = load('/Users/joewatson/Desktop/LawTech/new_search_sk_USE_sets7Apr.hdf5')
+    #grid_result = load('/Users/joewatson/Desktop/LawTech/new_search_sk_sBERT_sets7Apr.hdf5')
     # implement on test set (and cannot predict proba for LinearSVC unless further work: https://tapanpatro.medium.com/linearsvc-doesnt-have-predict-proba-ed8f48f47c55)
     y_pred = (grid_result.predict(data_dict[d_d][1].iloc[:, 1:]) > 0.5).astype("int32")
-    print("Accuracy: {}".format(grid_result.score(data_dict[d_d][1].iloc[:, 1:], y_test)))
+    print("macro_f1: {}".format(grid_result.score(data_dict[d_d][1].iloc[:, 1:], y_test)))
     print(classification_report(y_test, y_pred))
     print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
     # print(f1_score(y_pred, y_test, average="weighted"))  # https://stackoverflow.com/questions/33326810/scikit-weighted-f1-score-calculation-and-usage
@@ -380,7 +418,7 @@ def create_model(learning_rate, activation, dense_nparams, dropout):  # leaving 
     model.add(Dense(dense_nparams, activation=activation, kernel_constraint=maxnorm(dropout*15)))  # create input layer
     model.add(Dropout(dropout))
     model.add(Dense(1, activation='sigmoid'))  # create output layer
-    model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['accuracy'])  # compile model with optimizer, loss, and metrics
+    model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['accuracy'])  # compile model with optimizer, loss, and metrics  # to maybe get F1: https://aakashgoel12.medium.com/how-to-add-user-defined-function-get-f1-score-in-keras-metrics-3013f979ce0d
     return model
 
 # create a test-set and train-set dict
@@ -390,14 +428,15 @@ data_dict = {
     #'tfidf': [X_train_tfidf, X_test_tfidf],  # tfidf vectors not used here, but note https://stackoverflow.com/questions/62871108/error-with-tfidfvectorizer-but-ok-with-countvectorizer
 }
 
-#d_d = [X_train_tfidf, X_test_tfidf]  # temporarily here to enable quick re-running of specific embs
+#d_d = [X_train_USE_embs, X_test_USE_embs]  # temporarily here to enable quick re-running of specific embs
+#d_d = [X_train_sBERT_embs, X_test_sBERT_embs]  # temporarily here to enable quick re-running of specific embs
 for d_d in data_dict:
 
     max_f = data_dict[d_d][0].shape[1]-1
     #max_f = d_d[0].shape[1] - 1
 
     param_grid = {
-        'epochs': [20, 50, 100, 200],
+        'epochs': [10, 20, 50, 100],
         'dense_nparams': [max_f / 16, max_f / 8, max_f / 4, max_f / 2],
         #'batch_size': [1, 5, 10],
         'learning_rate': [0.1, 0.01, 0.001],
@@ -411,19 +450,20 @@ for d_d in data_dict:
     seed(1)  # from numpy again I think so poss duplicating
     tensorflow.random.set_seed(1)  # from tf
     random_search = RandomizedSearchCV(model, param_distributions=param_grid, cv=StratifiedKFold(5), n_jobs=-1,
-                                       n_iter=100, random_state=1)  # ... but cannot be fully reproducible as not single threaded: https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development  https://datascience.stackexchange.com/questions/37413/why-running-the-same-code-on-the-same-data-gives-a-different-result-every-time
+                                       n_iter=400, random_state=1, scoring='f1_macro', refit='f1_macro')  # ... but cannot be fully reproducible as not single threaded: https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development  https://datascience.stackexchange.com/questions/37413/why-running-the-same-code-on-the-same-data-gives-a-different-result-every-time
                                         # increased n_iter from 10 to 100 for final modelling
     # ran_result = random_search.fit(d_d[0].iloc[:, 1:], y_train, verbose=0)  # takes 5-10 minutes
     ran_result = random_search.fit(data_dict[d_d][0].iloc[:, 1:], y_train, verbose=0)  # takes 5-10 minutes
-    print("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
+    print("Best f1_macro: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
 
-    loc_string = "/Users/joewatson/Desktop/animal_law_classifier/" + d_d + "_score_params.txt"
+    loc_string = "/Users/joewatson/Desktop/animal_law_classifier/" + d_d + "_score_params7Apr.txt"
     with open(loc_string, "w") as text_file:
         text_file.write("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
 
-    loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_" + d_d + ".hdf5"  # added 'new_' to ensure already-run models are kept
-    #loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_temp.hdf5"
-    ran_result.best_estimator_.model.save(loc_string)
+    loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_" + d_d + "7Apr.hdf5"  # added 'new_' to ensure already-run models are kept
+    # loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_USE_embs7Apr.hdf5"
+    # loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_sBERT_embs7Apr.hdf5"
+    #ran_result.best_estimator_.model.save(loc_string)  # include line to save trained model
 
     best_model = tensorflow.keras.models.load_model(loc_string)  # https://www.tensorflow.org/api_docs/python/tf/
     # keras/models/load_model  # compile=True appears not to be required
@@ -440,9 +480,7 @@ for d_d in data_dict:
     print(accuracy_score(y_pred, y_test))
 
 
-# # #
-
-# show base model performance (i.e., everything as class 1)
+# # # show base model performance (i.e., everything as class 1)
 bool_pred = (y_test + 1) / (y_test + 1)
 print(confusion_matrix(bool_pred, y_test, labels=[1, 0]))
 print(classification_report(bool_pred, y_test))
@@ -451,14 +489,133 @@ print(f1_score(bool_pred, y_test, average="macro"))
 print(accuracy_score(bool_pred, y_test))
 
 
-# # # permutation tests - to be added
+# # # permutation tests
 
-# # # links to already-run models
+# precision, or 'what proportion of predicted Positives is truly Positive?' https://towardsdatascience.com/multi-class-metrics-made-simple-part-i-precision-and-recall-9250280bddc2
+# precision = tp/(tp + fp)
 
-# loc_string = '/Users/joewatson/Desktop/LawTech/ran_search_strat_model_tfidf.hdf5'
-# loc_string = '/Users/joewatson/Desktop/LawTech/ran_search_strat_model_sBERT_embs.hdf5'
-# loc_string = '/Users/joewatson/Desktop/LawTech/ran_search_strat_model_USE_embs.hdf5'
-# best_model = tensorflow.keras.models.load_model(loc_string)  # to load the selected model
+# recall, or 'what proportion of actual Positives is correctly classified?' (ibid)
+# recall = tp/(tp + fn)
 
-# weights = best_model.layers[0].get_weights()[0]
-# biases = best_model.layers[0].get_weights()[1]
+# per class f1 score
+# per_class_f1_score = 2 * (precision * recall)/(precision + recall)  # calc.d separately for class 1 and class 0
+# macro f1 score, or the simple arithmetic mean of per-class F1 scores: https://towardsdatascience.com/multi-class-metrics-made-simple-part-ii-the-f1-score-ebe8b2c2ca1
+
+def macro_f1(preds_class_1, preds_class_0):
+    tp_1 = preds_class_1.sum()
+    fp_1 = len(preds_class_0) - preds_class_0.sum()
+    fn_1 = len(preds_class_1) - preds_class_1.sum()
+    if tp_1 == 0:
+        precision_1, recall_1, f1_class_1 = 1, 1, 1
+    else:
+        precision_1 = tp_1/(tp_1 + fp_1)
+        recall_1 = tp_1/(tp_1 + fn_1)
+        f1_class_1 = 2 * (precision_1*recall_1) / (precision_1+recall_1)
+
+    tp_0 = sum(preds_class_0)
+    fp_0 = len(preds_class_1) - preds_class_1.sum()
+    fn_0 = len(preds_class_0) - preds_class_0.sum()
+    if tp_0 == 0:
+        precision_0, recall_0, f1_class_0 = 0, 0, 0
+    else:
+        precision_0 = tp_0 / (tp_0 + fp_0)
+        recall_0 = tp_0 / (tp_0 + fn_0)
+        f1_class_0 = 2 * (precision_0 * recall_0) / (precision_0 + recall_0)
+
+    mac_f1 = (f1_class_1 + f1_class_0)/2
+
+    return mac_f1
+
+#11 April - below is using outdated numbers, should be:
+#500-1k model 1:
+#[[11  4]
+# [ 5 80]]
+# F1 = 0.828211490742508, accuracy = 0.91
+# Best f1_macro: 0.7801661389866814 on validation folds
+
+#Model 2
+#[[11  3]
+# [ 5 81]]
+
+#Model 3
+#[[ 9  7]
+# [ 7 77]]
+
+#Model 4	Model 5
+#[[13 11]	[[12 13]
+# [ 3 73]]	[ 4 71]]
+
+# so, below needs updating
+
+# class_1
+actual_1 = [1]*16
+base_pred_1 = [1]*16
+tfidf_pred_1 = [1]*11 + [0]*5  # confusion matrix for tfidf model [[11  3] over [ 5 81]]
+USE_sk_pred_1 = [1]*10 + [0]*6  # [[10  3] over [ 6 81]]
+sBERT_sk_pred_1 = [1]*9 + [0]*7  # [[ 9  7] over [ 7 77]]
+USE_keras_pred_1 = [1]*11 + [0]*5  # [[11  7] over [ 5 77]]
+sBERT_keras_pred_1 = [1]*7 + [0]*9  # [[ 7  0] over [ 9 84]]
+class_1_df = pd.DataFrame({'actual_1': actual_1, 'base_pred_1': base_pred_1,
+                           'tfidf_pred_1': tfidf_pred_1, 'USE_sk_pred_1': USE_sk_pred_1,
+                           'sBERT_sk_pred_1': sBERT_sk_pred_1, 'USE_keras_pred_1': USE_keras_pred_1,
+                           'sBERT_keras_pred_1': sBERT_keras_pred_1})
+# class_0 (not animal law)
+actual_0 = [1]*84
+base_pred_0 = [0]*84
+tfidf_pred_0 = [1]*81 + [0]*3  # [[11  3] over [ 5 81]]
+USE_sk_pred_0 = [1]*81 + [0]*3  # [[10  3] over [ 6 81]]
+sBERT_sk_pred_0 = [1]*77 + [0]*7  # [[ 9  7] over [ 7 77]]
+USE_keras_pred_0 = [1]*77 + [0]*7  # [[11  7] over [ 5 77]]
+sBERT_keras_pred_0 = [1]*84 + [0]*0  # [[ 7  0] over [ 9 84]]
+
+class_0_df = pd.DataFrame({'actual_0': actual_0, 'base_pred_0': base_pred_0,
+                           'tfidf_pred_0': tfidf_pred_0, 'USE_sk_pred_0': USE_sk_pred_0,
+                           'sBERT_sk_pred_0': sBERT_sk_pred_0, 'USE_keras_pred_0': USE_keras_pred_0,
+                           'sBERT_keras_pred_0': sBERT_keras_pred_0})
+
+models_list = ['actual', 'base_pred', 'tfidf_pred', 'USE_sk_pred',
+                 'sBERT_sk_pred', 'USE_keras_pred', 'sBERT_keras_pred']
+
+for ml in models_list:  # print out all accuracy and f1
+    vari_1 = ml + "_1"
+    vari_0 = ml + "_0"
+    print(ml + " - macro_f1: " + str(macro_f1(class_1_df[vari_1], class_0_df[vari_0])))
+    print(ml + " - accuracy: " + str(sum(class_1_df[vari_1]) + sum(class_0_df[vari_0])))
+
+
+def permute(n_permutes, worse_pred_1, worse_pred_0, better_pred_1, better_pred_0):
+    test_stat_list = []
+    all_pred_1 = pd.Series(list(worse_pred_1) + list(better_pred_1))
+    all_pred_0 = pd.Series(list(worse_pred_0) + list(better_pred_0))
+    for i in range(n_permutes):
+        random.shuffle(all_pred_1)
+        random.shuffle(all_pred_0)
+        test_stat = macro_f1(all_pred_1[:16], all_pred_0[:100]) - macro_f1(all_pred_1[16:], all_pred_0[100:])
+        test_stat_list.append(test_stat)
+    return test_stat_list
+
+permus = 10000  # 10000 on http://www2.stat.duke.edu/~ar182/rr/examples-gallery/PermutationTest.html
+
+og_test_stat = macro_f1(class_1_df['tfidf_pred_1'], class_0_df['tfidf_pred_0']) - \
+               macro_f1(class_1_df['base_pred_1'], class_0_df['base_pred_0'])
+pmtts = permute(permus, class_1_df['base_pred_1'], class_0_df['base_pred_0'], class_1_df['tfidf_pred_1'], class_0_df['tfidf_pred_0'])
+diffCount = len(np.where(pmtts <= og_test_stat)[0])
+print(diffCount)
+hat_asl_perm = 1.0 - (float(diffCount)/float(permus))  # http://www2.stat.duke.edu/~ar182/rr/examples-gallery/PermutationTest.html
+print(hat_asl_perm < 0.05)
+
+# you create a loop where 'worse pred' vals change for the diff embeddings predictions
+# this prints out whether each of the worse preds are signif worse
+
+models_list = ['USE_sk_pred_', 'sBERT_sk_pred_', 'USE_keras_pred_', 'sBERT_keras_pred_']  # different (smaller) list
+
+for ml in models_list:
+    print(ml)
+    og_test_stat = macro_f1(class_1_df['tfidf_pred_1'], class_0_df['tfidf_pred_0']) - \
+                   macro_f1(class_1_df[ml + str(1)], class_0_df[ml + str(0)])
+    pmtts = permute(permus, class_1_df[ml + str(1)], class_0_df[ml + str(0)], class_1_df['tfidf_pred_1'],
+                    class_0_df['tfidf_pred_0'])
+    diffCount = len(np.where(pmtts <= og_test_stat)[0])
+    print(diffCount)
+    hat_asl_perm = 1.0 - (float(diffCount) / float(permus))
+    print(hat_asl_perm < 0.05)
