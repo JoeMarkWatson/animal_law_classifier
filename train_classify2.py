@@ -46,6 +46,10 @@ df['classification_narrow'] = np.where(df['Classification'] == 1, 1, 0)  # make 
 X, y = df[['Link']], df['classification_narrow']
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=1, stratify=y)
 
+# fix error in test set
+index_no = X_test.loc[lambda X_test: X_test['Link'] == 'https://www.bailii.org/ew/cases/EWHC/Admin/2002/908.html', :].index[0]
+y_test[index_no] = 1
+
 #_______________________________________________________________________________________________________________________
 
 
@@ -276,14 +280,15 @@ parameters = {
     # 'tfidf__stop_words': (None, 'english'),  # used by Medvedeva, but you are lemmatizing so this does not apply
     # cleanly and you do similar with max_df (which Medvedeva does not use)
     'tfidf__ngram_range': [(1, 1), (1, 2)],  # [(1, 1)]
-    'tfidf__max_df': (0.6, 0.7, 0.8),  # ignore ngrams that occur as more than .X of corpus  # (0.6, 0.7, 0.8)
-    'tfidf__min_df': (1, 2, 3),  # ignore ngrams featuring in less than 1, 2, 3 documents  # ([1])
+    'tfidf__max_df': (0.6, 0.7, 0.8),  # [(0.6)] # ignore ngrams that occur as more than .X of corpus  # (0.6, 0.7, 0.8)
+    'tfidf__min_df': (1, 2, 3),  # [(5)] # ignore ngrams featuring in less than 1, 2, 3 documents  # ([1])
     # 'tfidf__use_idf': (False, True),  # not tempted by this, but used by Medvedeva
     # 'tfidf__binary': (False, True),  # not tempted by this, but used by Medvedeva
     # 'tfidf__norm': (None, 'l1', 'l2'),  # not tempted by this, but used by Medvedeva
-    'tfidf__max_features': (500, 1000),  # Medvedeva permitted uncapped but this likely helps here given limited data
+    'tfidf__max_features': (500, 1000),  # [(1000)] # Medvedeva permitted uncapped but this likely helps here given limited data
 
-    'clf__C': (0.1, 1, 2, 5)  # 1, 2, 5
+    'clf__C': (0.1, 1, 2, 5),  # [(1)]
+    'clf__loss': ('hinge', 'squared_hinge')  # [('squared_hinge')]
 
 }
 
@@ -296,24 +301,22 @@ print("tfidf model tuned in %0.2f mins" % ((time() - t0)/60))  # to show total t
 # note that run time increases approx 1 min for each additional n_iter
 print("Best f1_macro: {}\nBest combination: {}".format(cv.best_score_, cv.best_params_))  # Medvedeva art: "For most
 # articles unigrams achieved the highest results"
-with open("/Users/joewatson/Desktop/animal_law_classifier/tfidf_score_params14Apr_5to1_jury_in.txt", "w") as text_file:
-    text_file.write("Best f1_macro: {}\nBest combination: {}".format(cv.best_score_, cv.best_params_))
+#with open("/Users/joewatson/Desktop/animal_law_classifier/tfidf_score_params14Apr_5to1_jury_in.txt", "w") as text_file:
+#    text_file.write("Best f1_macro: {}\nBest combination: {}".format(cv.best_score_, cv.best_params_))
 
 final_model = cv.best_estimator_
 
 # # save model
-loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf14Apr_5to1_jury_in.hdf5"  # added 'new_' to ensure already-run models are kept
-dump(cv.best_estimator_, loc_string)
-
-# above running to here # check in morning
-
+#loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf14Apr_5to1_jury_in.hdf5"  # added 'new_' to ensure already-run models are kept
+#dump(cv.best_estimator_, loc_string)
 
 # # load model
-#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf.hdf5')  # tuned on accuracy
-#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf7Apr.hdf5')   # tuned on f1
-#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf7Apr_5to1.hdf5')  # f1 and 5-1k
-#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf7Apr_1to2_no_inv.hdf5')  # f1 and longer 'jury words' list
-#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf14Apr_5to1_jury_in.hdf5')  # f1 and longer 'jury words' list
+#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf.hdf5')  # tuned on accuracy, jury was out during training
+#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf7Apr.hdf5')   # tuned on f1, jury was out during training
+#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf7Apr_5to1.hdf5')  # f1 and 5-1k, jury was out during training
+#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf7Apr_1to2_no_inv.hdf5')  # f1, longer 'jury words' list out during training
+#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf14Apr_5to1_jury_in_hinge.hdf5')  # f1 and hinge loss only allowed 19 Apr, jury in
+#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf14Apr_5to1_jury_in.hdf5')  # f1, jury in  # the selected model
 
 y_pred = final_model.predict(X_test['jtfc'])  # note you cannot predict proba for LinearSVC unless further
 # work: https://tapanpatro.medium.com/linearsvc-doesnt-have-predict-proba-ed8f48f47c55
@@ -357,7 +360,7 @@ plt.title("Features most predictive of not animal protection law")
 plt.show()
 
 pos_neg_df = pd.concat([df_lower, df_upper]).reset_index(drop=True)  # pos and neg on one graphic
-pos_neg_df['p_n_pred'] = np.where(pos_neg_df['value'] > 0.5, 'steelblue', 'indianred')
+pos_neg_df['p_n_pred'] = np.where(pos_neg_df['value'] > 0.5, '#8bb5bb', '#b3a6d0')  # 'steelblue', 'indianred'
 plt.bar(x=pos_neg_df['feature'],
         height=pos_neg_df['value'],
         color=pos_neg_df['p_n_pred'])
@@ -376,24 +379,26 @@ data_dict = {
 
 svm = LinearSVC(max_iter=10000)  # increasing max_iter (suggested by convergence fail error message when running sBERT,
 # and one of the multiple poss options given here: https://stackoverflow.com/questions/52670012/convergencewarning-liblinear-failed-to-converge-increase-the-number-of-iterati
-params = {'C': (0.1, 1, 2, 5, 10)}  # gamma not applicable to LinearSVC
+params = {'C': (0.1, 1, 2, 5, 10),
+          'loss': ('hinge', 'squared_hinge')}  # gamma not applicable to LinearSVC
 
 grid_search = GridSearchCV(svm, params, cv=StratifiedKFold(5), n_jobs=-1, verbose=1, scoring='f1_macro', refit='f1_macro')
 for d_d in data_dict:
     grid_result = grid_search.fit(data_dict[d_d][0].iloc[:, 1:], y_train)
     print("Best f1_macro: {}\nBest combination: {}".format(grid_result.best_score_, grid_result.best_params_))
     # save model and best params
-    loc_string = "/Users/joewatson/Desktop/animal_law_classifier/sk_" + d_d + "_score_params7Apr.txt"
+    loc_string = "/Users/joewatson/Desktop/animal_law_classifier/sk_" + d_d + "_score_params20Apr_hinge.txt"  # for saving hinge only
     with open(loc_string, "w") as text_file:
         text_file.write("Best macro_f1: {}\nBest combination: {}".format(grid_result.best_score_, grid_result.best_params_))
-    loc_string = "/Users/joewatson/Desktop/LawTech/new_search_sk_" + d_d + "7Apr.hdf5"
+    loc_string = "/Users/joewatson/Desktop/LawTech/new_search_sk_" + d_d + "20Apr_hinge.hdf5"  # for saving hinge only
     dump(grid_search.best_estimator_, loc_string)
     # load model
     #grid_result = load('/Users/joewatson/Desktop/LawTech/new_search_sk_USE_sets7Apr.hdf5')
-    #grid_result = load('/Users/joewatson/Desktop/LawTech/new_search_sk_sBERT_sets7Apr.hdf5')
+    ##grid_result = load('/Users/joewatson/Desktop/LawTech/new_search_sk_sBERT_sets7Apr.hdf5')  # squared hinge - outperformed by hinge
+    #grid_result = load('/Users/joewatson/Desktop/LawTech/new_search_sk_sbert_sets20Apr_hinge.hdf5')  # hinge
     # implement on test set (and cannot predict proba for LinearSVC unless further work: https://tapanpatro.medium.com/linearsvc-doesnt-have-predict-proba-ed8f48f47c55)
     y_pred = (grid_result.predict(data_dict[d_d][1].iloc[:, 1:]) > 0.5).astype("int32")
-    print("macro_f1: {}".format(grid_result.score(data_dict[d_d][1].iloc[:, 1:], y_test)))
+    #print("macro_f1: {}".format(grid_result.score(data_dict[d_d][1].iloc[:, 1:], y_test)))
     print(classification_report(y_test, y_pred))
     print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
     # print(f1_score(y_pred, y_test, average="weighted"))  # https://stackoverflow.com/questions/33326810/scikit-weighted-f1-score-calculation-and-usage
@@ -548,25 +553,28 @@ def macro_f1(preds_class_1, preds_class_0):
 # so, below needs updating
 
 # class_1
-actual_1 = [1]*16
-base_pred_1 = [1]*16
-tfidf_pred_1 = [1]*11 + [0]*5  # confusion matrix for tfidf model [[11  3] over [ 5 81]]
-USE_sk_pred_1 = [1]*10 + [0]*6  # [[10  3] over [ 6 81]]
-sBERT_sk_pred_1 = [1]*9 + [0]*7  # [[ 9  7] over [ 7 77]]
-USE_keras_pred_1 = [1]*11 + [0]*5  # [[11  7] over [ 5 77]]
-sBERT_keras_pred_1 = [1]*7 + [0]*9  # [[ 7  0] over [ 9 84]]
+actual_1 = [1]*17
+base_pred_1 = [1]*17
+tfidf_pred_1 = [1]*12 + [0]*5  # confusion matrix for tfidf model [[11  2] over [ 5 81]]
+USE_sk_pred_1 = [1]*11 + [0]*6  # [[11  3] over [ 6 80]]
+sBERT_sk_pred_1 = [1]*12 + [0]*5  # [[ 12  8] over [ 5 75]]
+USE_keras_pred_1 = [1]*14 + [0]*3  # [[14  10] over [ 3 73]]
+sBERT_keras_pred_1 = [1]*13 + [0]*4  # [[ 13  12] over [ 4 71]]
 class_1_df = pd.DataFrame({'actual_1': actual_1, 'base_pred_1': base_pred_1,
                            'tfidf_pred_1': tfidf_pred_1, 'USE_sk_pred_1': USE_sk_pred_1,
                            'sBERT_sk_pred_1': sBERT_sk_pred_1, 'USE_keras_pred_1': USE_keras_pred_1,
                            'sBERT_keras_pred_1': sBERT_keras_pred_1})
+# YOU'VE CHANGED ALL THE ABOVE, BUT NOTE THE BELOW - JUST ADDED THE ADDITIONAL INFO AFTER #
+
 # class_0 (not animal law)
-actual_0 = [1]*84
-base_pred_0 = [0]*84
-tfidf_pred_0 = [1]*81 + [0]*3  # [[11  3] over [ 5 81]]
-USE_sk_pred_0 = [1]*81 + [0]*3  # [[10  3] over [ 6 81]]
-sBERT_sk_pred_0 = [1]*77 + [0]*7  # [[ 9  7] over [ 7 77]]
-USE_keras_pred_0 = [1]*77 + [0]*7  # [[11  7] over [ 5 77]]
-sBERT_keras_pred_0 = [1]*84 + [0]*0  # [[ 7  0] over [ 9 84]]
+actual_0 = [1]*83
+base_pred_0 = [0]*83
+tfidf_pred_0 = [1]*81 + [0]*3  # [[11  2] over [ 5 81]], was [[11  3] over [ 5 81]]
+USE_sk_pred_0 = [1]*81 + [0]*3  # [[11  3] over [ 6 80]], was [[10  3] over [ 6 81]]
+sBERT_sk_pred_0 = [1]*77 + [0]*7  # [[ 12  8] over [ 5 75]], was [[ 9  7] over [ 7 77]]
+USE_keras_pred_0 = [1]*77 + [0]*7  # [[14  10] over [ 3 73]], was [[11  7] over [ 5 77]]
+sBERT_keras_pred_0 = [1]*84 + [0]*0  # [[ 13  12] over [ 4 71]], was [[ 7  0] over [ 9 84]]
+# JOE RESTART HERE
 
 class_0_df = pd.DataFrame({'actual_0': actual_0, 'base_pred_0': base_pred_0,
                            'tfidf_pred_0': tfidf_pred_0, 'USE_sk_pred_0': USE_sk_pred_0,
@@ -619,3 +627,131 @@ for ml in models_list:
     print(diffCount)
     hat_asl_perm = 1.0 - (float(diffCount) / float(permus))
     print(hat_asl_perm < 0.05)
+
+
+
+
+#_____________________________________________________________________________________________________________________
+
+# write a loop that scrapes, embeds and classifies all non-labelled cases
+import time
+
+df2 = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled_h.csv")  # '_h' added to fix heathcote (although has no effect as only non-labelled used)
+df2 = df2[['Case', 'Year', 'Link', 'Classification', 'Sample']]  # remove Index, Explanation and og_sample columns
+df2 = df2[df2['Sample'] == 0]  # retain non-labelled judgments only (1137)
+#df2 = df2.head(3) # for trialling
+
+link_dict2 = df2.set_index('Link').T.to_dict('list')  # make a dict with Link as key
+
+d = []
+for l in enumerate(link_dict2.keys()):
+
+    req = Request(l[1], headers={'User-Agent': 'Mozilla/5.0'})
+    webpage = urlopen(req).read()
+    page_soup = BeautifulSoup(webpage, "html5lib")
+    case_text = page_soup.get_text()  # scrape no more specif due to varying page layouts
+    case_text = re.sub('\n', ' ', case_text)  # replace '\n' with ' '
+    case_text = re.sub('@media screen|@media print|#screenonly|BAILII|Multidatabase Search|World Law', '', case_text)  # remove some patterns
+
+    case_text = str(case_text)
+    case_text = remove_urls(case_text)
+    case_text = remove_html_tags(case_text)
+    case_text = case_text.lower()
+    case_text = case_text.strip()
+    case_text = re.sub(r'\d+', '', case_text)
+    case_text = remove_punct(case_text)
+    case_text = remove_first_n_words(case_text)
+    case_text = retain_english(case_text)
+
+    # add in some sleep to script
+    ran = np.random.random_integers(0, 5)
+    time.sleep(1 + ran)
+
+    # and now you need to apply ur final tfidf model to the case text (which also tf-idf transforms it)
+    d.append(
+        {
+            'link': l[1],
+            'case_name': link_dict2[l[1]][0],
+            'year': link_dict2[l[1]][1],
+            'ml_classification': final_model.predict([case_text])[0],
+            'word_count_once_manipd': len(word_tokenize(case_text)),
+            'manipd_text': case_text  # line should be removed when uploading to github - you say not stored
+        }
+    )
+
+    print("Done " + str(l[0]+1) + " classifications")
+
+print("done")
+
+non_labelled_d = pd.DataFrame(d)
+
+# DATA SAVING
+#non_labelled_d.to_csv('/Users/joewatson/Desktop/LawTech/predicted_non_labelled_cases.csv', index=False)
+# DATA LOADING
+#pd.read_csv('/Users/joewatson/Desktop/LawTech/predicted_non_labelled_cases.csv')
+
+#non_l_d_c = non_labelled_d[['case_name', 'year', 'link', 'my_classification', 'raw_classification']].copy()  # retain cols to match with imported df
+non_l_d_c = non_labelled_d[['case_name', 'year', 'link', 'ml_classification']].copy()  # retain cols to match with imported df
+non_l_d_c['sample'] = 0  # adding sample column for upcoming concat
+non_l_d_c['sme_classification'] = np.nan  # adding march_classification column for upcoming concat
+non_l_d_c['sme_narrow'] = np.nan  # adding march_narrow column for upcoming concat
+non_l_d_c['class_match'] = np.nan
+
+# # # # # # # # # #
+
+# make a df with my_classification and march_classification columns
+
+# use df created at start
+df = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled_h.csv")  # import same csv with Heathcote error fixed
+df = df[['Case', 'Year', 'Link', 'Classification', 'Sample']]  # remove Index, Explanation and og_sample columns
+df = df[df['Classification'] >= 0]  # retain labelled judgments only
+df['sme_narrow'] = np.where(df['Classification'] == 1, 1, 0)  # make a narrow class column, covering animal protection law only
+df.columns = ['case_name', 'year', 'link', 'sme_classification', 'sample', 'sme_narrow']  # renaming the cols of the df created early on, which holds only labelled judgments
+
+judgments_preds = pd.concat([pd.DataFrame(y_pred).reset_index(drop=True),
+                             pd.DataFrame(X_test['Link']).reset_index(drop=True)], axis=1)
+# link changed for Link in above line, to facil use of data from data loading point
+judgments_preds.columns = ['ml_classification', 'link']
+
+labelled_n_preds = pd.merge(df, judgments_preds, how='left')  # merge df with judgments_preds based on 'link'
+
+conditions = [
+    (labelled_n_preds['ml_classification'] == 0) & (labelled_n_preds['sme_narrow'] == 0),
+    (labelled_n_preds['ml_classification'] == 1) & (labelled_n_preds['sme_narrow'] == 1),
+    (labelled_n_preds['ml_classification'] == 0) & (labelled_n_preds['sme_narrow'] == 1),
+    (labelled_n_preds['ml_classification'] == 1) & (labelled_n_preds['sme_narrow'] == 0),
+    (labelled_n_preds['ml_classification'].isnull())
+    ]  # https://www.dataquest.io/blog/tutorial-add-column-pandas-dataframe-based-on-if-else-condition/
+
+# create a list of the values we want to assign for each condition
+values = [1, 1, 0, 0, np.nan]
+
+# create a new column and use np.select to assign values to it using our lists as arguments
+labelled_n_preds['class_match'] = np.select(conditions, values)
+
+#concat (stack) with non_l_d_c and write to csv
+full_pred_df = pd.concat([non_l_d_c, labelled_n_preds])
+full_pred_df.columns = ['case_name', 'year', 'link', 'ml_class', 'sme_sample',
+                        'sme_class', 'sme_narrow_class', 'class_match']  # rename columns
+
+# writing a df that shows where classifications differ
+#full_pred_df.to_csv("/Users/joewatson/Desktop/LawTech/full_pred_df27_apr.csv", index=False)  # just filter class_match == 0
+
+a4a_df = full_pred_df.copy()
+a4a_df = a4a_df[['case_name', 'year', 'link', 'ml_class', 'sme_narrow_class']]
+
+classification_list = []
+for i in range(len(a4a_df)):
+    classifications = []
+    if a4a_df.iloc[i, 4] >= 0:  # march_narrow classification available
+        classifications = [a4a_df.iloc[i, 4], 'expert']
+    else:
+        classifications = [a4a_df.iloc[i, 3], 'ml']
+    classification_list.append(classifications)
+
+# concat SME's narrow classification - or ml classification if SME's unavailable - to first 3 a4a_df cols
+a4a_df_share = pd.concat([a4a_df[['case_name', 'year', 'link']].reset_index(drop=True), pd.DataFrame(classification_list)], axis=1)
+a4a_df_share.columns = ['case_name', 'year', 'link', 'classification', 'expert_or_ml_classified']
+a4a_df_share['classification'] = np.where(a4a_df_share['link'] == 'https://www.bailii.org/ew/cases/EWHC/Admin/2002/908.html', 1, a4a_df_share['classification'])  # fix labelling error
+a4a_df_share = a4a_df_share.sort_values('year')
+#a4a_df_share.to_csv("/Users/joewatson/Desktop/LawTech/a4a_df_share4May.csv", index=False)
