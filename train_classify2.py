@@ -429,7 +429,7 @@ def create_model(learning_rate, activation, dense_nparams, dropout):  # leaving 
 # create a test-set and train-set dict
 data_dict = {
     'USE_embs': [X_train_USE_embs, X_test_USE_embs],
-    'sBERT_embs': [X_train_sBERT_embs, X_test_sBERT_embs] # ,
+    'sBERT_embs': [X_train_sBERT_embs, X_test_sBERT_embs]  # ,
     #'tfidf': [X_train_tfidf, X_test_tfidf],  # tfidf vectors not used here, but note https://stackoverflow.com/questions/62871108/error-with-tfidfvectorizer-but-ok-with-countvectorizer
 }
 
@@ -483,6 +483,83 @@ for d_d in data_dict:
     # print(f1_score(y_pred, y_test, average="weighted"))  # https://stackoverflow.com/questions/33326810/scikit-weighted-f1-score-calculation-and-usage
     print(f1_score(y_pred, y_test, average="macro"))
     print(accuracy_score(y_pred, y_test))
+
+
+# # # model 6: tuned keras for tuned TF-IDF
+
+# same random seeds as models 4 and 5, but likely good to re-state
+np.random.seed(1)  # attempt to max reproducibility...
+seed(1)  # from numpy again I think so poss duplicating
+tensorflow.random.set_seed(1)  # from tf
+
+best_score_sf = 0  # best score so far
+q = 1
+
+for lmt in (lemmatizer, None):
+    for ngrams in [(1, 1), (1, 2)]:
+        for max_d in (0.6, 0.7, 0.8):
+            for min_d in (1, 2, 3):
+                for max_f in (500, 1000):
+                    print("starting vectorising")
+                    vectorizer = TfidfVectorizer(max_features=max_f)  # tokenizer=lmt, ngram_range=ngrams, max_df=max_d, min_df=min_d,
+                    X_train_tfidf = vectorizer.fit_transform(X_train['jtfc']).toarray()
+                    X_train_tfidf = pd.concat([X_train['Link'].reset_index(drop=True), pd.DataFrame(X_train_tfidf)], axis=1)
+                    print("vectorising completed")
+
+                    d_d = X_train_tfidf
+
+                    max_f = d_d.shape[1] - 1
+
+                    param_grid = {
+                            'epochs': [10, 20, 50, 100],
+                            'dense_nparams': [max_f / 20, max_f / 10, max_f / 4, max_f / 2],  # some diff divisors from embeddings
+                            'learning_rate': [0.1, 0.01, 0.001],
+                            'activation': ['relu'],
+                            'dropout': [0.2, 0]
+                    }
+
+                    model = KerasClassifier(build_fn=create_model)  # same create_model from embeddings
+
+                    random_search = RandomizedSearchCV(model, param_distributions=param_grid, cv=StratifiedKFold(5), n_jobs=-1,
+                                                       n_iter=400, random_state=1, scoring='f1_macro', refit='f1_macro')
+
+                    ran_result = random_search.fit(d_d.iloc[:, 1:], y_train, verbose=0)
+                    print("trained mlp model " + str(q) + " of 72")
+                    q += 1
+
+                    if ran_result.best_score_ > best_score_sf:
+                        print(best_score_sf)
+                        best_score_sf = ran_result.best_score_
+                        best_params_sf = ran_result.best_params_  # best params so far
+                        best_vect = str(vectorizer)
+                        loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidfMLP_29May.hdf5"
+                        ran_result.best_estimator_.model.save(loc_string)  # include line to save trained model
+                        params_loc_string = "/Users/joewatson/Desktop/animal_law_classifier/tfidfMLP_score_params29May.txt"
+                        with open(params_loc_string, "w") as text_file:
+                            text_file.write("Best validation score: {}\nBest TFIDF spec: {}\nBest mlp params: {}".format(best_score_sf, best_vect, best_params_sf))
+
+                        print("saving done, making X_test vectors")
+                        X_test_tfidf = vectorizer.transform(X_test['jtfc']).toarray()  # use vectorizer fitted to best performing model
+                        X_test_tfidf = pd.concat([X_test['Link'].reset_index(drop=True), pd.DataFrame(X_test_tfidf)], axis=1)
+                        print("made X_test vectors")
+
+# and after all trialling, save best param.s/tfidf spec.s and do predictions on test set vectors
+
+best_model = tensorflow.keras.models.load_model(loc_string)
+best_model.best_params
+y_pred_proba = best_model.predict(X_test_tfidf.iloc[:, 1:])  # in case prediction info is required
+#y_pred_proba = best_model.predict(d_d[1].iloc[:, 1:])  # in case prediction info is required
+y_pred = (best_model.predict(X_test_tfidf.iloc[:, 1:]) > 0.5).astype("int32")
+#y_pred = (best_model.predict(d_d[1].iloc[:, 1:]) > 0.5).astype("int32")
+
+print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
+print(classification_report(y_pred, y_test))
+# print(f1_score(y_pred, y_test, average="weighted"))  # https://stackoverflow.com/questions/33326810/scikit-weighted-f1-score-calculation-and-usage
+print(f1_score(y_pred, y_test, average="macro"))
+print(accuracy_score(y_pred, y_test))
+
+
+#_______________________________________________________________________________________________________________________
 
 
 # # # show base model performance (i.e., everything as class 1)
@@ -555,7 +632,7 @@ def macro_f1(preds_class_1, preds_class_0):
 # class_1
 actual_1 = [1]*17
 base_pred_1 = [1]*17
-tfidf_pred_1 = [1]*12 + [0]*5  # confusion matrix for tfidf model [[11  2] over [ 5 81]]
+tfidf_pred_1 = [1]*12 + [0]*5  # confusion matrix for tfidf model [[12  2] over [ 5 81]]
 USE_sk_pred_1 = [1]*11 + [0]*6  # [[11  3] over [ 6 80]]
 sBERT_sk_pred_1 = [1]*12 + [0]*5  # [[ 12  8] over [ 5 75]]
 USE_keras_pred_1 = [1]*14 + [0]*3  # [[14  10] over [ 3 73]]
@@ -564,18 +641,15 @@ class_1_df = pd.DataFrame({'actual_1': actual_1, 'base_pred_1': base_pred_1,
                            'tfidf_pred_1': tfidf_pred_1, 'USE_sk_pred_1': USE_sk_pred_1,
                            'sBERT_sk_pred_1': sBERT_sk_pred_1, 'USE_keras_pred_1': USE_keras_pred_1,
                            'sBERT_keras_pred_1': sBERT_keras_pred_1})
-# YOU'VE CHANGED ALL THE ABOVE, BUT NOTE THE BELOW - JUST ADDED THE ADDITIONAL INFO AFTER #
 
 # class_0 (not animal law)
 actual_0 = [1]*83
 base_pred_0 = [0]*83
-tfidf_pred_0 = [1]*81 + [0]*3  # [[11  2] over [ 5 81]], was [[11  3] over [ 5 81]]
-USE_sk_pred_0 = [1]*81 + [0]*3  # [[11  3] over [ 6 80]], was [[10  3] over [ 6 81]]
-sBERT_sk_pred_0 = [1]*77 + [0]*7  # [[ 12  8] over [ 5 75]], was [[ 9  7] over [ 7 77]]
-USE_keras_pred_0 = [1]*77 + [0]*7  # [[14  10] over [ 3 73]], was [[11  7] over [ 5 77]]
-sBERT_keras_pred_0 = [1]*84 + [0]*0  # [[ 13  12] over [ 4 71]], was [[ 7  0] over [ 9 84]]
-# JOE RESTART HERE
-
+tfidf_pred_0 = [1]*81 + [0]*2  # [[12  2] over [ 5 81]], was [[11  3] over [ 5 81]]
+USE_sk_pred_0 = [1]*80 + [0]*3  # [[11  3] over [ 6 80]], was [[10  3] over [ 6 81]]
+sBERT_sk_pred_0 = [1]*75 + [0]*8  # [[ 12  8] over [ 5 75]], was [[ 9  7] over [ 7 77]]
+USE_keras_pred_0 = [1]*73 + [0]*10  # [[14  10] over [ 3 73]], was [[11  7] over [ 5 77]]
+sBERT_keras_pred_0 = [1]*71 + [0]*12  # [[ 13  12] over [ 4 71]], was [[ 7  0] over [ 9 84]]  # all values updated
 class_0_df = pd.DataFrame({'actual_0': actual_0, 'base_pred_0': base_pred_0,
                            'tfidf_pred_0': tfidf_pred_0, 'USE_sk_pred_0': USE_sk_pred_0,
                            'sBERT_sk_pred_0': sBERT_sk_pred_0, 'USE_keras_pred_0': USE_keras_pred_0,
@@ -590,6 +664,42 @@ for ml in models_list:  # print out all accuracy and f1
     print(ml + " - macro_f1: " + str(macro_f1(class_1_df[vari_1], class_0_df[vari_0])))
     print(ml + " - accuracy: " + str(sum(class_1_df[vari_1]) + sum(class_0_df[vari_0])))
 
+class_0_df.columns = class_1_df.columns
+all_preds = class_1_df.append(class_0_df, ignore_index=True)
+
+z = np.array([94,197,16,38,99,141,23])
+y = np.array([52,104,146,10,51,30,40,27,46])
+z = np.array(all_preds['base_pred_1'])
+y = np.array(all_preds['tfidf_pred_1'])
+
+theta_hat = z.mean() - y.mean()
+# make array all predictions for each model
+
+def run_permutation_test(pooled, sizeZ, sizeY, delta):
+     np.random.shuffle(pooled)
+     starZ = pooled[:sizeZ]
+     starY = pooled[-sizeY:]
+     return starZ.mean() - starY.mean()
+
+pooled = np.hstack([z,y])
+delta = z.mean() - y.mean()
+numSamples = 10000
+estimates = np.array(list(map(lambda x: run_permutation_test(pooled,z.size,y.size,delta),range(numSamples))))
+diffCount = len(np.where(estimates <= delta)[0])
+hat_asl_perm = 1.0 - (float(diffCount)/float(numSamples))
+print(hat_asl_perm)
+
+# # # #
+test_stat_list = []
+ap = all_preds[['base_pred_1', 'tfidf_pred_1']]
+for i in range(10):
+    new_list = []
+    for row in range(len(ap)):
+        new_list.append(ap.loc[row, ].sample(frac=1).values)
+    df_permu = pd.DataFrame(new_list)
+    test_stat = macro_f1(df_permu.iloc[0, :16], df_permu.iloc[0, 17:]) - macro_f1(df_permu.iloc[1, :16], df_permu.iloc[1, 17:])
+    # restart above line - the 16 isn't gettring the top 16 rows...
+    test_stat_list.append(test_stat)
 
 def permute(n_permutes, worse_pred_1, worse_pred_0, better_pred_1, better_pred_0):
     test_stat_list = []
