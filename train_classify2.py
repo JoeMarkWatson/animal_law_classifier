@@ -157,7 +157,7 @@ dd['jtfc'] = dd['judgment_text'].map(str) \
 #dd.to_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_Apr_JuryIn.csv', index=False)
 ##DATA LOAD POINT
 #dd = pd.read_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_23Mar.csv')
-#dd = pd.read_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_Apr_JuryIn.csv')
+dd = pd.read_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_Apr_JuryIn.csv')
 
 # add jthc to your X_train selection
 dd.columns = ['Link', 'case_name', 'year', 'classification_narrow', 'word_count_pre_stem', 'judgment_text', 'jtfc']  # to
