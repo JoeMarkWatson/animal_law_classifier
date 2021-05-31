@@ -501,7 +501,7 @@ for lmt in (lemmatizer, None):
             for min_d in (1, 2, 3):
                 for max_f in (500, 1000):
                     print("starting vectorising")
-                    vectorizer = TfidfVectorizer(max_features=max_f)  # tokenizer=lmt, ngram_range=ngrams, max_df=max_d, min_df=min_d,
+                    vectorizer = TfidfVectorizer(tokenizer=lmt, ngram_range=ngrams, max_df=max_d, min_df=min_d, max_features=max_f)
                     X_train_tfidf = vectorizer.fit_transform(X_train['jtfc']).toarray()
                     X_train_tfidf = pd.concat([X_train['Link'].reset_index(drop=True), pd.DataFrame(X_train_tfidf)], axis=1)
                     print("vectorising completed")
@@ -546,7 +546,7 @@ for lmt in (lemmatizer, None):
 # and after all trialling, save best param.s/tfidf spec.s and do predictions on test set vectors
 
 best_model = tensorflow.keras.models.load_model(loc_string)
-best_model.best_params
+
 y_pred_proba = best_model.predict(X_test_tfidf.iloc[:, 1:])  # in case prediction info is required
 #y_pred_proba = best_model.predict(d_d[1].iloc[:, 1:])  # in case prediction info is required
 y_pred = (best_model.predict(X_test_tfidf.iloc[:, 1:]) > 0.5).astype("int32")
@@ -562,13 +562,21 @@ print(accuracy_score(y_pred, y_test))
 #_______________________________________________________________________________________________________________________
 
 
-# # # show base model performance (i.e., everything as class 1)
+# # # show base model performance (i.e., everything as class 1) on test set
 bool_pred = (y_test + 1) / (y_test + 1)
 print(confusion_matrix(bool_pred, y_test, labels=[1, 0]))
 print(classification_report(bool_pred, y_test))
 # print(f1_score(bool_pred, y_test, average="weighted"))  # https://stackoverflow.com/questions/37358496/is-f1-micro-the-same-as-accuracy
 print(f1_score(bool_pred, y_test, average="macro"))
 print(accuracy_score(bool_pred, y_test))
+
+# # # show base model performance (i.e., everything as class 1) on validation folds
+vali_folds_prediction = np.array([1]*80)
+vali_folds_actual_1 = np.array([1]*14 + [0]*66)
+vali_folds_actual_4 = np.array([1]*13 + [0]*67)
+vali_f1_1 = f1_score(vali_folds_prediction, vali_folds_actual_1, average="macro")
+vali_f1_4 = f1_score(vali_folds_prediction, vali_folds_actual_4, average="macro")
+print(np.mean([vali_f1_1] + [vali_f1_4]*4))
 
 
 # # # permutation tests
