@@ -616,26 +616,6 @@ def macro_f1(preds_class_1, preds_class_0):
 
     return mac_f1
 
-#11 April - below is using outdated numbers, should be:
-#500-1k model 1:
-#[[11  4]
-# [ 5 80]]
-# F1 = 0.828211490742508, accuracy = 0.91
-# Best f1_macro: 0.7801661389866814 on validation folds
-
-#Model 2
-#[[11  3]
-# [ 5 81]]
-
-#Model 3
-#[[ 9  7]
-# [ 7 77]]
-
-#Model 4	Model 5
-#[[13 11]	[[12 13]
-# [ 3 73]]	[ 4 71]]
-
-# so, below needs updating
 
 # class_1
 actual_1 = [1]*17
@@ -643,28 +623,33 @@ base_pred_1 = [1]*17
 tfidf_pred_1 = [1]*12 + [0]*5  # confusion matrix for tfidf model [[12  2] over [ 5 81]]
 USE_sk_pred_1 = [1]*11 + [0]*6  # [[11  3] over [ 6 80]]
 sBERT_sk_pred_1 = [1]*12 + [0]*5  # [[ 12  8] over [ 5 75]]
+tfidf_keras_pred_1 = [1]*10 + [0]*7  # [[10  6] over [ 7 77]]
 USE_keras_pred_1 = [1]*14 + [0]*3  # [[14  10] over [ 3 73]]
 sBERT_keras_pred_1 = [1]*13 + [0]*4  # [[ 13  12] over [ 4 71]]
 class_1_df = pd.DataFrame({'actual_1': actual_1, 'base_pred_1': base_pred_1,
                            'tfidf_pred_1': tfidf_pred_1, 'USE_sk_pred_1': USE_sk_pred_1,
-                           'sBERT_sk_pred_1': sBERT_sk_pred_1, 'USE_keras_pred_1': USE_keras_pred_1,
+                           'sBERT_sk_pred_1': sBERT_sk_pred_1, 'tfidf_keras_pred_1': tfidf_keras_pred_1,
+                           'USE_keras_pred_1': USE_keras_pred_1,
                            'sBERT_keras_pred_1': sBERT_keras_pred_1})
 
 # class_0 (not animal law)
 actual_0 = [1]*83
 base_pred_0 = [0]*83
-tfidf_pred_0 = [1]*81 + [0]*2  # [[12  2] over [ 5 81]], was [[11  3] over [ 5 81]]
-USE_sk_pred_0 = [1]*80 + [0]*3  # [[11  3] over [ 6 80]], was [[10  3] over [ 6 81]]
-sBERT_sk_pred_0 = [1]*75 + [0]*8  # [[ 12  8] over [ 5 75]], was [[ 9  7] over [ 7 77]]
-USE_keras_pred_0 = [1]*73 + [0]*10  # [[14  10] over [ 3 73]], was [[11  7] over [ 5 77]]
-sBERT_keras_pred_0 = [1]*71 + [0]*12  # [[ 13  12] over [ 4 71]], was [[ 7  0] over [ 9 84]]  # all values updated
+tfidf_pred_0 = [1]*81 + [0]*2  # [[12  2] over [ 5 81]]
+USE_sk_pred_0 = [1]*80 + [0]*3  # [[11  3] over [ 6 80]]
+sBERT_sk_pred_0 = [1]*75 + [0]*8  # [[ 12  8] over [ 5 75]]
+tfidf_keras_pred_0 = [1]*77 + [0]*6  # [[10  6] over [ 7 77]]
+USE_keras_pred_0 = [1]*73 + [0]*10  # [[14  10] over [ 3 73]]
+sBERT_keras_pred_0 = [1]*71 + [0]*12  # [[ 13  12] over [ 4 71]]
+
 class_0_df = pd.DataFrame({'actual_0': actual_0, 'base_pred_0': base_pred_0,
                            'tfidf_pred_0': tfidf_pred_0, 'USE_sk_pred_0': USE_sk_pred_0,
-                           'sBERT_sk_pred_0': sBERT_sk_pred_0, 'USE_keras_pred_0': USE_keras_pred_0,
+                           'sBERT_sk_pred_0': sBERT_sk_pred_0, 'tfidf_keras_pred_0': tfidf_keras_pred_0,
+                           'USE_keras_pred_0': USE_keras_pred_0,
                            'sBERT_keras_pred_0': sBERT_keras_pred_0})
 
 models_list = ['actual', 'base_pred', 'tfidf_pred', 'USE_sk_pred',
-                 'sBERT_sk_pred', 'USE_keras_pred', 'sBERT_keras_pred']
+                 'sBERT_sk_pred', 'tfidf_keras_pred', 'USE_keras_pred', 'sBERT_keras_pred']
 
 for ml in models_list:  # print out all accuracy and f1
     vari_1 = ml + "_1"
@@ -672,79 +657,60 @@ for ml in models_list:  # print out all accuracy and f1
     print(ml + " - macro_f1: " + str(macro_f1(class_1_df[vari_1], class_0_df[vari_0])))
     print(ml + " - accuracy: " + str(sum(class_1_df[vari_1]) + sum(class_0_df[vari_0])))
 
+# create df of all model and baseline predictions
 class_0_df.columns = class_1_df.columns
 all_preds = class_1_df.append(class_0_df, ignore_index=True)
 
-z = np.array([94,197,16,38,99,141,23])
-y = np.array([52,104,146,10,51,30,40,27,46])
-z = np.array(all_preds['base_pred_1'])
-y = np.array(all_preds['tfidf_pred_1'])
-
-theta_hat = z.mean() - y.mean()
-# make array all predictions for each model
-
-def run_permutation_test(pooled, sizeZ, sizeY, delta):
-     np.random.shuffle(pooled)
-     starZ = pooled[:sizeZ]
-     starY = pooled[-sizeY:]
-     return starZ.mean() - starY.mean()
-
-pooled = np.hstack([z,y])
-delta = z.mean() - y.mean()
-numSamples = 10000
-estimates = np.array(list(map(lambda x: run_permutation_test(pooled,z.size,y.size,delta),range(numSamples))))
-diffCount = len(np.where(estimates <= delta)[0])
-hat_asl_perm = 1.0 - (float(diffCount)/float(numSamples))
-print(hat_asl_perm)
-
-# # # #
-test_stat_list = []
-ap = all_preds[['base_pred_1', 'tfidf_pred_1']]
-for i in range(10):
-    new_list = []
-    for row in range(len(ap)):
-        new_list.append(ap.loc[row, ].sample(frac=1).values)
-    df_permu = pd.DataFrame(new_list)
-    test_stat = macro_f1(df_permu.iloc[0, :16], df_permu.iloc[0, 17:]) - macro_f1(df_permu.iloc[1, :16], df_permu.iloc[1, 17:])
-    # restart above line - the 16 isn't gettring the top 16 rows...
-    test_stat_list.append(test_stat)
-
-def permute(n_permutes, worse_pred_1, worse_pred_0, better_pred_1, better_pred_0):
+def permute(n_permutes, worse_pred_1, better_pred_1):  # taking preds from all_preds df
     test_stat_list = []
-    all_pred_1 = pd.Series(list(worse_pred_1) + list(better_pred_1))
-    all_pred_0 = pd.Series(list(worse_pred_0) + list(better_pred_0))
-    for i in range(n_permutes):
-        random.shuffle(all_pred_1)
-        random.shuffle(all_pred_0)
-        test_stat = macro_f1(all_pred_1[:16], all_pred_0[:100]) - macro_f1(all_pred_1[16:], all_pred_0[100:])
+    ap = all_preds[[worse_pred_1, better_pred_1]]  # was 'base_pred_1', 'tfidf_pred_1' when not a function
+    for i in range(n_permutes):  # should be 10000
+        new_list = []
+        for row in range(len(ap)):
+            new_list.append(ap.loc[row, ].sample(frac=1).values)
+        df_permu = pd.DataFrame(new_list)
+        test_stat = macro_f1(df_permu.iloc[:16, 0], df_permu.iloc[16:, 0]) - macro_f1(df_permu.iloc[:16, 1], df_permu.iloc[16:, 1])
         test_stat_list.append(test_stat)
     return test_stat_list
 
+
+# loop where 'model_a' vals change for diff embeddings predictions, to show if tf-idf is sig better than any other
+
+models_list = ['base_pred_1', 'USE_sk_pred_1', 'sBERT_sk_pred_1', 'tfidf_keras_pred_1', 'USE_keras_pred_1',
+               'sBERT_keras_pred_1']
+
 permus = 10000  # 10000 on http://www2.stat.duke.edu/~ar182/rr/examples-gallery/PermutationTest.html
-
-og_test_stat = macro_f1(class_1_df['tfidf_pred_1'], class_0_df['tfidf_pred_0']) - \
-               macro_f1(class_1_df['base_pred_1'], class_0_df['base_pred_0'])
-pmtts = permute(permus, class_1_df['base_pred_1'], class_0_df['base_pred_0'], class_1_df['tfidf_pred_1'], class_0_df['tfidf_pred_0'])
-diffCount = len(np.where(pmtts <= og_test_stat)[0])
-print(diffCount)
-hat_asl_perm = 1.0 - (float(diffCount)/float(permus))  # http://www2.stat.duke.edu/~ar182/rr/examples-gallery/PermutationTest.html
-print(hat_asl_perm < 0.05)
-
-# you create a loop where 'worse pred' vals change for the diff embeddings predictions
-# this prints out whether each of the worse preds are signif worse
-
-models_list = ['USE_sk_pred_', 'sBERT_sk_pred_', 'USE_keras_pred_', 'sBERT_keras_pred_']  # different (smaller) list
-
+model_b = 'tfidf_pred_1'
 for ml in models_list:
     print(ml)
-    og_test_stat = macro_f1(class_1_df['tfidf_pred_1'], class_0_df['tfidf_pred_0']) - \
-                   macro_f1(class_1_df[ml + str(1)], class_0_df[ml + str(0)])
-    pmtts = permute(permus, class_1_df[ml + str(1)], class_0_df[ml + str(0)], class_1_df['tfidf_pred_1'],
-                    class_0_df['tfidf_pred_0'])
+    og_test_stat = macro_f1(class_1_df[model_b], class_0_df[model_b]) - \
+                   macro_f1(class_1_df[ml], class_0_df[ml])
+    pmtts = permute(permus, ml, model_b)
+    diffCount = len(np.where(pmtts <= og_test_stat)[0])
+    print(diffCount)
+    hat_asl_perm = 1.0 - (float(diffCount) / float(
+        permus))  # http://www2.stat.duke.edu/~ar182/rr/examples-gallery/PermutationTest.html
+    print(hat_asl_perm)
+    print(hat_asl_perm < 0.05)
+    print("___")
+
+# loop where baseline gets compared to each ml model, to check if any are sig better than baseline
+
+models_list = ['tfidf_pred_1', 'USE_sk_pred_1', 'sBERT_sk_pred_1', 'tfidf_keras_pred_1', 'USE_keras_pred_1',
+               'sBERT_keras_pred_1']
+
+model_a = 'base_pred_1'
+for ml in models_list:
+    print(ml)
+    og_test_stat = macro_f1(class_1_df[ml], class_0_df[ml]) - \
+                   macro_f1(class_1_df[model_a], class_0_df[model_a])
+    pmtts = permute(permus, model_a, ml)
     diffCount = len(np.where(pmtts <= og_test_stat)[0])
     print(diffCount)
     hat_asl_perm = 1.0 - (float(diffCount) / float(permus))
+    print(hat_asl_perm)
     print(hat_asl_perm < 0.05)
+    print("___")
 
 
 
