@@ -7,20 +7,9 @@ from bs4 import BeautifulSoup
 from urllib.request import Request, urlopen
 
 
-# Bailii scraping through requests.get throws error, as shown below
-url = "https://www.bailii.org/uk/cases/UKSC/2009/"
-page = requests.get(url)  # Error 403: Forbidden
-soup = BeautifulSoup(page.content, 'xml')  # Error 403: Forbidden
-soup = BeautifulSoup(page, "html5lib")  # Error 403: Forbidden
-html = urlopen(url)  # Error 403: Forbidden
-
-# To work around Error 403, follow: https://medium.com/@raiyanquaium/how-to-web-scrape-using-beautiful-soup-in
-# -python-without-running-into-http-error-403-554875e5abed
-
-
 # # # # #
 
-# scrape attempt 1 using bailii's inbuilt boolean search method as a basis
+# scrape approach that uses bailii's inbuilt boolean search method as a basis
 
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
@@ -71,7 +60,7 @@ with open("/Users/joewatson/Desktop/LawTech/animal_bailii_bool.txt", "w") as fil
 
 # # # # #
 
-# scrape attempt 2 using alt method to address bailii's evident inbuilt boolean search problems
+# scrape approach that addresses bailii's inbuilt boolean search tool problems
 
 def bailii_scraper(txt_file, year_min, year_max, court_code):
     with open(txt_file, "w") as file:
@@ -183,21 +172,17 @@ animal_df['Index'] = range(1, len(animal_df)+1)
 animal_df_trim = animal_df[["Index", "Case", "Year", "Link"]]
 animal_df_trim['Classification'] = ' '  # copy warning - ignore
 animal_df_trim['Explanation'] = ' '  # copy warning - ignore
-animal_df_trim_sample = list(animal_df_trim['Index'].sample(n=200, random_state=1))  # select 200 cases for March label
+animal_df_trim_sample = list(animal_df_trim['Index'].sample(n=200, random_state=1))  # select 200 cases for labelling (soon increased to 500 total)
 animal_df_trim["Sample"] = np.where(animal_df_trim["Index"].isin(animal_df_trim_sample), 1, 0)  # To label, filter
 # by 'Sample' column. This means that the labeller can generally check the whole 'animal'/'Animal' list.
 animal_df_trim.to_csv("/Users/joewatson/Desktop/LawTech/animal_df.csv", encoding='utf-8', index=False)
 
-# show cases I found that bailii didn't
+# show cases found that bailii's inbuilt search tool did not find
 list_1 = case_links_list
 list_2 = list(animal_df_trim["Link"])
 main_list = np.setdiff1d(list_2, list_1)
 
-
-# 1. MARCH LABELLED THE 200 SAMPLED CASES ON 'animal_df.csv'
-# 2. I DOWNLOADED THE LABELLED DATAFRAME ('Animal law cases for labelling - animal_df'), TRIALLED AND REQUESTED 300 MORE
-# 3. TO SAMPLE A FURTHER 300 FROM THE DOWNLOADED DATAFRAME WITH 200 LABELS, THE FOLLOWING WAS RUN
-
+# selecting a further 300 cases for labelling
 df = pandas.read_csv("/Users/joewatson/Downloads/Animal law cases for labelling - animal_df.csv")
 df2 = df[df['Classification'].isnull()]  # retain non-labelled judgments only
 df1 = df[df['Classification'] >= 0]  # retain labelled judgments only
@@ -208,8 +193,5 @@ df2['og_sample'] = 0
 df2 = pd.concat([df1, df2], ignore_index=True)
 df2.to_csv("/Users/joewatson/Desktop/LawTech/animal_df2.csv", encoding='utf-8', index=False)
 
-# 4. MARCH LABELLED THE NEXT 300 SAMPLED CASES
-# 5. I DOWNLOADED THE LABELLED DATAFRAME ('animal_df2_labelled.csv') WITH LINK SHOWN BELOW
-df = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled.csv")  # import csv with March's labels on it
-
-# 6. THIS DF IS THE ONE USED AT THE START OF THE git_embeddings SCRIPT
+# All judgments containing 'animal' with (and without) human labels can be found in the case_law_repository.csv file in
+# the animal_law_classifier GitHub repository
