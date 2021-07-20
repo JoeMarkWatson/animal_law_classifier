@@ -34,10 +34,13 @@ from sklearn.metrics import classification_report, confusion_matrix, accuracy_sc
 from keras.constraints import maxnorm
 from joblib import dump, load
 
-# # # always run the below, even if using a later data loading point
+# # # on local machine - always run the below, even if using a later data loading point
+
+# NOTE - if on another machine, information in the labelled spreadsheet, with the test set error already fixed, can
+# be taken from the case_law_repository.csv file available in the animal_law_classifier GitHub repository
 
 # import labelled spreadsheet
-df = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled_h.csv")  # import same csv with Heathcote error fixed
+df = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled_h.csv")
 df = df[['Case', 'Year', 'Link', 'Classification', 'Sample']]  # remove Index, Explanation and og_sample columns
 df = df[df['Classification'] >= 0]  # retain labelled judgments only
 df['classification_narrow'] = np.where(df['Classification'] == 1, 1, 0)  # make a narrow class column, covering animal protection law only
@@ -49,6 +52,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 # fix error in test set
 index_no = X_test.loc[lambda X_test: X_test['Link'] == 'https://www.bailii.org/ew/cases/EWHC/Admin/2002/908.html', :].index[0]
 y_test[index_no] = 1
+
 
 #_______________________________________________________________________________________________________________________
 
@@ -77,7 +81,7 @@ for l in link_dict.keys():
             'case_name': link_dict[l][0],
             'year': link_dict[l][1],
             'classification_narrow': link_dict[l][4],
-            'word_count_pre_stem': len(word_tokenize(case_text)),  # included here to help catch scrape error
+            'word_count_pre_stem': len(word_tokenize(case_text)),  # included here to help catch any potential scrape error
             'judgment_text': case_text
         }
     )
@@ -94,9 +98,7 @@ dd = pd.DataFrame(d)
 
 # # # tfidf model prep
 
-# create a jtfc (judgment text further cleaning) column, following cleaning advice on:
-# https://medium.com/@am.benatmane/keras-hyperparameter-tuning-using-sklearn-pipelines-grid-search-with-cross-
-# validation-ccfc74b0ce9f
+# create a jtfc (judgment text further cleaning) column
 def remove_urls(text):
     """remove hypertext links"""
     text = re.sub(r'^https?:\/\/.*[\r\n]*', '', text, flags=re.MULTILINE)
@@ -152,11 +154,8 @@ dd['jtfc'] = dd['judgment_text'].map(str) \
                             .map(retain_english)  # takes approx 7 mins run time
 
 ##DATA SAVE POINT
-#dd.to_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text.csv', index=False)  # old stemmed text
-#dd.to_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_23Mar.csv', index=False)
 #dd.to_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_Apr_JuryIn.csv', index=False)
 ##DATA LOAD POINT
-#dd = pd.read_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_23Mar.csv')
 dd = pd.read_csv('/Users/joewatson/Desktop/LawTech/scraped_500_cleaned_text_Apr_JuryIn.csv')
 
 # add jthc to your X_train selection
@@ -199,10 +198,8 @@ for jt in dd['judgment_text']:
     print("Done " + str(len(all_mean_embs)) + " embedding averages")
 
 # DATA SAVING POINT BELOW
-###all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/labelled_embeddings8Jan.csv')  # written 08.01.2021
 #all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/USE_embeddings24Mar.csv')  # written 23.03.2021
 # DATA LOADING POINT BELOW
-###all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/labelled_embeddings8Jan.csv')
 #all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/USE_embeddings24Mar.csv')
 #all_mean_embs = all_mean_embs.iloc[:, 1:]
 
@@ -245,10 +242,8 @@ for jt in dd['judgment_text']:
     print("Done " + str(len(all_mean_embs)) + " embedding averages")
 
 # DATA SAVING POINT BELOW
-#all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings1Mar.csv')
 #all_mean_embs.to_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings22Mar.csv')
 # DATA LOADING POINT BELOW
-##all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings1Mar.csv')
 #all_mean_embs = pd.read_csv('/Users/joewatson/Desktop/LawTech/baseBERT_embeddings22Mar.csv')
 #all_mean_embs = all_mean_embs.iloc[:, 1:]
 
@@ -257,12 +252,7 @@ X_train_sBERT_embs = pd.merge(X_train['Link'], sBERT_embs, how='inner')
 X_test_sBERT_embs = pd.merge(X_test['Link'], sBERT_embs, how='inner')
 
 
-# # # model 1: tuned linearSVC with tuned tfidfVectorizer for jtfc
-
-# Showing that stemming can be tuned through the tokenizer option: https://gist.github.com/deargle/b57738c8ce2b4ed6ca90f86d5422431f
-# Showing that it is OK to lemma before n-gram selection (and perhaps preferable to allow this as an option, or even
-# just carry it out before tuning): https://stackoverflow.com/questions/47219389/compute-word-n-grams-on-original-text-or-after-lemma-stemming-process
-# When lemmatizing, you need to show context (and pos='v' is likely fine for this): https://www.datacamp.com/community/tutorials/stemming-lemmatization-python
+# # # Tuned linearSVC with tuned tfidfVectorizer for jtfc
 
 def lemmatizer(text):
     words = [word for word in nltk.word_tokenize(text) if len(word) > 1]  # if len(word) > 1 to retain words 2+ characters long
@@ -272,7 +262,7 @@ def lemmatizer(text):
 pipeline = Pipeline([
     ('tfidf', TfidfVectorizer(analyzer='word')),
     ('clf', LinearSVC())
-])  # https://towardsdatascience.com/support-vector-machine-python-example-d67d9b63f1c8 for rel deep explanation of SVMs
+])
 
 parameters = {
 
@@ -282,10 +272,7 @@ parameters = {
     'tfidf__ngram_range': [(1, 1), (1, 2)],  # [(1, 1)]
     'tfidf__max_df': (0.6, 0.7, 0.8),  # [(0.6)] # ignore ngrams that occur as more than .X of corpus  # (0.6, 0.7, 0.8)
     'tfidf__min_df': (1, 2, 3),  # [(5)] # ignore ngrams featuring in less than 1, 2, 3 documents  # ([1])
-    # 'tfidf__use_idf': (False, True),  # not tempted by this, but used by Medvedeva
-    # 'tfidf__binary': (False, True),  # not tempted by this, but used by Medvedeva
-    # 'tfidf__norm': (None, 'l1', 'l2'),  # not tempted by this, but used by Medvedeva
-    'tfidf__max_features': (500, 1000),  # [(1000)] # Medvedeva permitted uncapped but this likely helps here given limited data
+    'tfidf__max_features': (500, 1000),
 
     'clf__C': (0.1, 1, 2, 5),  # [(1)]
     'clf__loss': ('hinge', 'squared_hinge')  # [('squared_hinge')]
@@ -293,7 +280,7 @@ parameters = {
 }
 
 cv = RandomizedSearchCV(pipeline, param_distributions=parameters, cv=StratifiedKFold(5), n_iter=800, n_jobs=-1,
-                        verbose=1, random_state=1, scoring='f1_macro', refit='f1_macro')  # to potentially report F1: https://scikit-learn.org/stable/modules/model_evaluation.html
+                        verbose=1, random_state=1, scoring='f1_macro', refit='f1_macro')
 # return_train_score=True gives by-split score results
 t0 = time()
 cv.fit(X_train['jtfc'], y_train)
@@ -307,11 +294,10 @@ print("Best f1_macro: {}\nBest combination: {}".format(cv.best_score_, cv.best_p
 final_model = cv.best_estimator_
 
 # # save model
-#loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf14Apr_5to1_jury_in.hdf5"  # added 'new_' to ensure already-run models are kept
+#loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf14Apr_5to1_jury_in.hdf5"
 #dump(cv.best_estimator_, loc_string)
 
 # # load model
-#final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf.hdf5')  # tuned on accuracy, jury was out during training
 #final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf7Apr.hdf5')   # tuned on f1, jury was out during training
 #final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf7Apr_5to1.hdf5')  # f1 and 5-1k, jury was out during training
 #final_model = load('/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_tfidf7Apr_1to2_no_inv.hdf5')  # f1, longer 'jury words' list out during training
@@ -326,18 +312,14 @@ print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
 print(f1_score(y_pred, y_test, average="macro"))
 print(accuracy_score(y_pred, y_test))
 
-# Below draws from: https://towardsdatascience.com/how-to-get-feature-importances-from-any-sklearn-pipeline-167a19f1214
-# And the following source could also be checked:
-# https://towardsdatascience.com/extracting-plotting-feature-names-importance-from-scikit-learn-pipelines-eb5bfa6a31f4
 feature_names = final_model.named_steps['tfidf'].get_feature_names()
 coefs = final_model.named_steps["clf"].coef_.flatten()
 zipped = zip(feature_names, coefs)
 df = pd.DataFrame(zipped, columns=["feature", "value"])
 df["abs_value"] = df["value"].apply(lambda x: abs(x))
-df = df.sort_values("value", ascending=False)  # note the presence of animal in the list, which is there as 'animal'
-# removed from some training set judgments as it was just in the first 200 words of the judgment in each case
+df = df.sort_values("value", ascending=False)
 
-# plot features that
+# plot features
 import matplotlib.pyplot as plt
 df_upper = df.head(10)
 df_upper = df_upper.sort_values("value", ascending=True)
@@ -370,7 +352,7 @@ plt.title("Most positive and negative lemma coefficient values")
 plt.show()
 
 
-# # # models 2 and 3: tuned linearSVC for USE and tuned linearSVC for sBERT
+# # # Tuned linearSVC for USE and tuned linearSVC for sBERT (2 models in this section)
 
 data_dict = {
                 'use_sets': [X_train_USE_embs, X_test_USE_embs],
@@ -396,24 +378,15 @@ for d_d in data_dict:
     #grid_result = load('/Users/joewatson/Desktop/LawTech/new_search_sk_USE_sets7Apr.hdf5')
     ##grid_result = load('/Users/joewatson/Desktop/LawTech/new_search_sk_sBERT_sets7Apr.hdf5')  # squared hinge - outperformed by hinge
     #grid_result = load('/Users/joewatson/Desktop/LawTech/new_search_sk_sbert_sets20Apr_hinge.hdf5')  # hinge
-    # implement on test set (and cannot predict proba for LinearSVC unless further work: https://tapanpatro.medium.com/linearsvc-doesnt-have-predict-proba-ed8f48f47c55)
+    # implement on test set
     y_pred = (grid_result.predict(data_dict[d_d][1].iloc[:, 1:]) > 0.5).astype("int32")
-    #print("macro_f1: {}".format(grid_result.score(data_dict[d_d][1].iloc[:, 1:], y_test)))
     print(classification_report(y_test, y_pred))
     print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
-    # print(f1_score(y_pred, y_test, average="weighted"))  # https://stackoverflow.com/questions/33326810/scikit-weighted-f1-score-calculation-and-usage
     print(f1_score(y_pred, y_test, average="macro"))
     print(accuracy_score(y_pred, y_test))
 
 
-# # # models 4 and 5: tuned keras for USE and tuned keras for sBERT
-
-# if playing with tfidf vector (tuned for sklearn linearSVC), then run the following:
-#vectorizer = final_model.named_steps['tfidf']
-#X_train_tfidf = vectorizer.transform(X_train['jtfc']).toarray()  # https://stackoverflow.com/questions/62871108/error-with-tfidfvectorizer-but-ok-with-countvectorizer
-#X_train_tfidf = pd.concat([X_train['Link'].reset_index(drop=True), pd.DataFrame(X_train_tfidf)], axis=1)
-#X_test_tfidf = vectorizer.transform(X_test['jtfc']).toarray()
-#X_test_tfidf = pd.concat([X_test['Link'].reset_index(drop=True), pd.DataFrame(X_test_tfidf)], axis=1)
+# # # Tuned keras for USE and tuned keras for sBERT (2 models in this section)
 
 # define create_model
 def create_model(learning_rate, activation, dense_nparams, dropout):  # leaving no. of layers and layer order constant
@@ -433,12 +406,9 @@ data_dict = {
     #'tfidf': [X_train_tfidf, X_test_tfidf],  # tfidf vectors not used here, but note https://stackoverflow.com/questions/62871108/error-with-tfidfvectorizer-but-ok-with-countvectorizer
 }
 
-#d_d = [X_train_USE_embs, X_test_USE_embs]  # temporarily here to enable quick re-running of specific embs
-#d_d = [X_train_sBERT_embs, X_test_sBERT_embs]  # temporarily here to enable quick re-running of specific embs
 for d_d in data_dict:
 
     max_f = data_dict[d_d][0].shape[1]-1
-    #max_f = d_d[0].shape[1] - 1
 
     param_grid = {
         'epochs': [10, 20, 50, 100],
@@ -446,18 +416,16 @@ for d_d in data_dict:
         #'batch_size': [1, 5, 10],
         'learning_rate': [0.1, 0.01, 0.001],
         'activation': ['relu'],
-        'dropout': [0.2, 0]  # DROPOUT REFS https://machinelearningmastery.com/dropout-regularization-deep-learning-models-keras/
-    }  # define param_grid after max_f so it uses the current max_f value
+        'dropout': [0.2, 0]
+    }
 
     model = KerasClassifier(build_fn=create_model)
 
-    np.random.seed(1)  # attempt to max reproducibility...
+    np.random.seed(1)
     seed(1)  # from numpy again I think so poss duplicating
     tensorflow.random.set_seed(1)  # from tf
     random_search = RandomizedSearchCV(model, param_distributions=param_grid, cv=StratifiedKFold(5), n_jobs=-1,
-                                       n_iter=400, random_state=1, scoring='f1_macro', refit='f1_macro')  # ... but cannot be fully reproducible as not single threaded: https://keras.io/getting_started/faq/#how-can-i-obtain-reproducible-results-using-keras-during-development  https://datascience.stackexchange.com/questions/37413/why-running-the-same-code-on-the-same-data-gives-a-different-result-every-time
-                                        # increased n_iter from 10 to 100 for final modelling
-    # ran_result = random_search.fit(d_d[0].iloc[:, 1:], y_train, verbose=0)  # takes 5-10 minutes
+                                       n_iter=400, random_state=1, scoring='f1_macro', refit='f1_macro')
     ran_result = random_search.fit(data_dict[d_d][0].iloc[:, 1:], y_train, verbose=0)  # takes 5-10 minutes
     print("Best f1_macro: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
 
@@ -465,7 +433,7 @@ for d_d in data_dict:
     with open(loc_string, "w") as text_file:
         text_file.write("Best accuracy: {}\nBest combination: {}".format(ran_result.best_score_, ran_result.best_params_))
 
-    loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_" + d_d + "7Apr.hdf5"  # added 'new_' to ensure already-run models are kept
+    loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_" + d_d + "7Apr.hdf5"
     # loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_USE_embs7Apr.hdf5"
     # loc_string = "/Users/joewatson/Desktop/LawTech/new_ran_search_strat_model_sBERT_embs7Apr.hdf5"
     #ran_result.best_estimator_.model.save(loc_string)  # include line to save trained model
@@ -485,12 +453,11 @@ for d_d in data_dict:
     print(accuracy_score(y_pred, y_test))
 
 
-# # # model 6: tuned keras for tuned TF-IDF
+# # # Tuned keras and tuned TF-IDF
 
-# same random seeds as models 4 and 5, but likely good to re-state
-np.random.seed(1)  # attempt to max reproducibility...
-seed(1)  # from numpy again I think so poss duplicating
-tensorflow.random.set_seed(1)  # from tf
+np.random.seed(1)
+seed(1)
+tensorflow.random.set_seed(1)
 
 best_score_sf = 0  # best score so far
 q = 1
@@ -512,7 +479,7 @@ for lmt in (lemmatizer, None):
 
                     param_grid = {
                             'epochs': [10, 20, 50, 100],
-                            'dense_nparams': [max_f / 20, max_f / 10, max_f / 4, max_f / 2],  # some diff divisors from embeddings
+                            'dense_nparams': [max_f / 20, max_f / 10, max_f / 4, max_f / 2],
                             'learning_rate': [0.1, 0.01, 0.001],
                             'activation': ['relu'],
                             'dropout': [0.2, 0]
@@ -554,7 +521,6 @@ y_pred = (best_model.predict(X_test_tfidf.iloc[:, 1:]) > 0.5).astype("int32")
 
 print(confusion_matrix(y_pred, y_test, labels=[1, 0]))
 print(classification_report(y_pred, y_test))
-# print(f1_score(y_pred, y_test, average="weighted"))  # https://stackoverflow.com/questions/33326810/scikit-weighted-f1-score-calculation-and-usage
 print(f1_score(y_pred, y_test, average="macro"))
 print(accuracy_score(y_pred, y_test))
 
@@ -566,7 +532,6 @@ print(accuracy_score(y_pred, y_test))
 bool_pred = (y_test + 1) / (y_test + 1)
 print(confusion_matrix(bool_pred, y_test, labels=[1, 0]))
 print(classification_report(bool_pred, y_test))
-# print(f1_score(bool_pred, y_test, average="weighted"))  # https://stackoverflow.com/questions/37358496/is-f1-micro-the-same-as-accuracy
 print(f1_score(bool_pred, y_test, average="macro"))
 print(accuracy_score(bool_pred, y_test))
 
@@ -581,15 +546,8 @@ print(np.mean([vali_f1_1] + [vali_f1_4]*4))
 
 # # # permutation tests
 
-# precision, or 'what proportion of predicted Positives is truly Positive?' https://towardsdatascience.com/multi-class-metrics-made-simple-part-i-precision-and-recall-9250280bddc2
-# precision = tp/(tp + fp)
-
-# recall, or 'what proportion of actual Positives is correctly classified?' (ibid)
-# recall = tp/(tp + fn)
-
-# per class f1 score
 # per_class_f1_score = 2 * (precision * recall)/(precision + recall)  # calc.d separately for class 1 and class 0
-# macro f1 score, or the simple arithmetic mean of per-class F1 scores: https://towardsdatascience.com/multi-class-metrics-made-simple-part-ii-the-f1-score-ebe8b2c2ca1
+# macro f1 score is the simple arithmetic mean of per-class F1 scores
 
 def macro_f1(preds_class_1, preds_class_0):
     tp_1 = preds_class_1.sum()
@@ -679,7 +637,7 @@ def permute(n_permutes, worse_pred_1, better_pred_1):  # taking preds from all_p
 models_list = ['base_pred_1', 'USE_sk_pred_1', 'sBERT_sk_pred_1', 'tfidf_keras_pred_1', 'USE_keras_pred_1',
                'sBERT_keras_pred_1']
 
-permus = 10000  # 10000 on http://www2.stat.duke.edu/~ar182/rr/examples-gallery/PermutationTest.html
+permus = 10000
 model_b = 'tfidf_pred_1'
 for ml in models_list:
     print(ml)
@@ -689,7 +647,7 @@ for ml in models_list:
     diffCount = len(np.where(pmtts <= og_test_stat)[0])
     print(diffCount)
     hat_asl_perm = 1.0 - (float(diffCount) / float(
-        permus))  # http://www2.stat.duke.edu/~ar182/rr/examples-gallery/PermutationTest.html
+        permus))
     print(hat_asl_perm)
     print(hat_asl_perm < 0.05)
     print("___")
@@ -717,13 +675,16 @@ for ml in models_list:
 
 #_____________________________________________________________________________________________________________________
 
-# write a loop that scrapes, embeds and classifies all non-labelled cases
+# loop that scrapes, embeds and classifies all non-labelled cases
 import time
 
-df2 = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled_h.csv")  # '_h' added to fix heathcote (although has no effect as only non-labelled used)
+df2 = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled_h.csv")
 df2 = df2[['Case', 'Year', 'Link', 'Classification', 'Sample']]  # remove Index, Explanation and og_sample columns
 df2 = df2[df2['Sample'] == 0]  # retain non-labelled judgments only (1137)
 #df2 = df2.head(3) # for trialling
+
+# NOTE - the labelled and non-labelled judgment information in df2 can be extracted from case_law_repository.csv if
+# working on a difference computer
 
 link_dict2 = df2.set_index('Link').T.to_dict('list')  # make a dict with Link as key
 
@@ -747,7 +708,6 @@ for l in enumerate(link_dict2.keys()):
     case_text = remove_first_n_words(case_text)
     case_text = retain_english(case_text)
 
-    # add in some sleep to script
     ran = np.random.random_integers(0, 5)
     time.sleep(1 + ran)
 
@@ -783,7 +743,7 @@ non_l_d_c['class_match'] = np.nan
 
 # # # # # # # # # #
 
-# make a df with my_classification and march_classification columns
+# make a df with my_classification and march_classification (or, domain-expert classification) columns
 
 # use df created at start
 df = pd.read_csv("/Users/joewatson/Desktop/LawTech/animal_df2_labelled_h.csv")  # import same csv with Heathcote error fixed
@@ -791,6 +751,9 @@ df = df[['Case', 'Year', 'Link', 'Classification', 'Sample']]  # remove Index, E
 df = df[df['Classification'] >= 0]  # retain labelled judgments only
 df['sme_narrow'] = np.where(df['Classification'] == 1, 1, 0)  # make a narrow class column, covering animal protection law only
 df.columns = ['case_name', 'year', 'link', 'sme_classification', 'sample', 'sme_narrow']  # renaming the cols of the df created early on, which holds only labelled judgments
+
+# NOTE - the labelled and non-labelled judgment information in df can be extracted from case_law_repository.csv if
+# working on a difference computer
 
 judgments_preds = pd.concat([pd.DataFrame(y_pred).reset_index(drop=True),
                              pd.DataFrame(X_test['Link']).reset_index(drop=True)], axis=1)
@@ -805,7 +768,7 @@ conditions = [
     (labelled_n_preds['ml_classification'] == 0) & (labelled_n_preds['sme_narrow'] == 1),
     (labelled_n_preds['ml_classification'] == 1) & (labelled_n_preds['sme_narrow'] == 0),
     (labelled_n_preds['ml_classification'].isnull())
-    ]  # https://www.dataquest.io/blog/tutorial-add-column-pandas-dataframe-based-on-if-else-condition/
+    ]
 
 # create a list of the values we want to assign for each condition
 values = [1, 1, 0, 0, np.nan]
@@ -821,21 +784,23 @@ full_pred_df.columns = ['case_name', 'year', 'link', 'ml_class', 'sme_sample',
 # writing a df that shows where classifications differ
 #full_pred_df.to_csv("/Users/joewatson/Desktop/LawTech/full_pred_df27_apr.csv", index=False)  # just filter class_match == 0
 
-a4a_df = full_pred_df.copy()
-a4a_df = a4a_df[['case_name', 'year', 'link', 'ml_class', 'sme_narrow_class']]
+final_pred_df = full_pred_df.copy()
+final_pred_df = final_pred_df[['case_name', 'year', 'link', 'ml_class', 'sme_narrow_class']]
 
 classification_list = []
-for i in range(len(a4a_df)):
+for i in range(len(final_pred_df)):
     classifications = []
-    if a4a_df.iloc[i, 4] >= 0:  # march_narrow classification available
-        classifications = [a4a_df.iloc[i, 4], 'expert']
+    if final_pred_df.iloc[i, 4] >= 0:  # march_narrow classification available
+        classifications = [final_pred_df.iloc[i, 4], 'expert']
     else:
-        classifications = [a4a_df.iloc[i, 3], 'ml']
+        classifications = [final_pred_df.iloc[i, 3], 'ml']
     classification_list.append(classifications)
 
-# concat SME's narrow classification - or ml classification if SME's unavailable - to first 3 a4a_df cols
-a4a_df_share = pd.concat([a4a_df[['case_name', 'year', 'link']].reset_index(drop=True), pd.DataFrame(classification_list)], axis=1)
-a4a_df_share.columns = ['case_name', 'year', 'link', 'classification', 'expert_or_ml_classified']
-a4a_df_share['classification'] = np.where(a4a_df_share['link'] == 'https://www.bailii.org/ew/cases/EWHC/Admin/2002/908.html', 1, a4a_df_share['classification'])  # fix labelling error
-a4a_df_share = a4a_df_share.sort_values('year')
-#a4a_df_share.to_csv("/Users/joewatson/Desktop/LawTech/a4a_df_share4May.csv", index=False)
+# concat SME's narrow classification - or ml classification if SME's unavailable - to first 3 final_pred_df cols
+final_pred_df_share = pd.concat([final_pred_df[['case_name', 'year', 'link']].reset_index(drop=True), pd.DataFrame(classification_list)], axis=1)
+final_pred_df_share.columns = ['case_name', 'year', 'link', 'classification', 'expert_or_ml_classified']
+final_pred_df_share['classification'] = np.where(final_pred_df_share['link'] == 'https://www.bailii.org/ew/cases/EWHC/Admin/2002/908.html', 1, final_pred_df_share['classification'])  # fix labelling error
+final_pred_df_share = final_pred_df_share.sort_values('year')
+
+#final_pred_df_share.to_csv("/Users/joewatson/Desktop/LawTech/a4a_df_share4May.csv", index=False)  # giving
+# the df uploaded as case_law_repository.csv to the animal_law_classifier GitHub repository
