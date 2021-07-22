@@ -1,4 +1,4 @@
-case_name,year,link,classification,sme_or_ml_classified
+case_name,year,link,classification,expert_or_ml_classified
 Bristol-Myers Squibb Company v Baker Norton Pharmaceuticals Inc & Anor [2000] EWCA Civ 169 (23 May 2000),2000,https://www.bailii.org/ew/cases/EWCA/Civ/2000/169.html,1,expert
 Flack v Hudson [2000] EWCA Civ 360 (06 November 2000),2000,https://www.bailii.org/ew/cases/EWCA/Civ/2000/360.html,0,expert
 "A (Children), Re [2000] EWCA Civ 254 (22 September 2000)",2000,https://www.bailii.org/ew/cases/EWCA/Civ/2000/254.html,0,ml
