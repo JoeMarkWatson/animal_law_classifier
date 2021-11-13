@@ -127,8 +127,8 @@ def remove_first_n_words(text):
     return text
 
 english_words = set(nltk.corpus.words.words())  # and remove jury from here
-jury_words = {}
-jury_words = {'jury', 'juries', 'jurying', 'juried', 'juror'}
+jury_words = {}  # no jury-related words excluded from model
+#jury_words = {'jury', 'juries', 'jurying', 'juried', 'juror'}
 #jury_words = {'jury', 'juries', 'jurying', 'juried', 'juror',
 #              'schedule', 'scheduls', 'scheduling', 'scheduled', 'scheduler',
 #              'investigation', 'investigations', 'investigating', 'investigated', 'investigator'}
