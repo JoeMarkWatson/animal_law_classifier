@@ -753,7 +753,7 @@ df['sme_narrow'] = np.where(df['Classification'] == 1, 1, 0)  # make a narrow cl
 df.columns = ['case_name', 'year', 'link', 'sme_classification', 'sample', 'sme_narrow']  # renaming the cols of the df created early on, which holds only labelled judgments
 
 # NOTE - the labelled and non-labelled judgment information in df can be extracted from case_law_repository.csv if
-# working on a difference computer
+# working on a different computer
 
 judgments_preds = pd.concat([pd.DataFrame(y_pred).reset_index(drop=True),
                              pd.DataFrame(X_test['Link']).reset_index(drop=True)], axis=1)
