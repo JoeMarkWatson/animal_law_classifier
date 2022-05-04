@@ -1,15 +1,13 @@
 # animal_law_classifier
 
 This repository holds:
- - A case law repository
- - A labelling guidance document
- - A script that gathers judgment links
- - A script that trains and applies an animal law judgment classifier, to create a case law repository.
+ - A case law repository (case_law_repository.csv)
+ - A labelling guidance document (animal_protection_law_guidance.docx)
+ - A script that gathers judgment links (scrape_label.py)
+ - A script that trains and tests TF-IDF SVM, TF-IDF MLP, USE SVM, USE MLP, s-BERT SVM and s-BERT MLP systems, and creates a case law repository using the best-performing TF-IDF SVM system (train_classify2.py)
+ - A script that creates judgment embeddings using BigBird and Longformer (transformer_embedding_extraction.py; produced by Guy Aglionby: https://github.com/GuyAglionby)
+ - A script that trains and tests SVM and MLP models using judgment embeddings created using BigBird and Longformer (transformer_classification.py; produced by Guy Aglionby: https://github.com/GuyAglionby)
 
 The case law repository holds links to all judgments containing 'animal' made between January 2000 and December 2020 from the Privy Council, House of Lords, Supreme Court and upper England and Wales courts. Judgment links are provided alongside human- and ML-created labels, showing whether judgments are concerned with animal protection law.
 
-The labelling guidance document contains a docx file that to guide the classification of court judgments sampled for human labelling into two categories: those which are substantially concerned with animal protection and those which are not substantially concerned with animal protection.
-
-The script that gathers judgment links is named, scrape_label.py
-
-The script that rains and applies an animal law judgment classifier is named, train_classify2.py
+The labelling guidance document contains a docx file that guided the classification of court judgments sampled for human labelling into two categories: those which are substantially concerned with animal protection and those which are not substantially concerned with animal protection.
