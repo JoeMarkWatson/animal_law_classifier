@@ -1,6 +1,8 @@
 # animal_law_classifier
 
-This repository is referred to from the following manuscript: https://link.springer.com/article/10.1007/s10506-022-09313-y. It contains:
+This repository supported the creation of an article in AI and Law and is referred to in the published manuscript: https://link.springer.com/article/10.1007/s10506-022-09313-y. 
+
+The repository contains:
  - A case law repository (case_law_repository.csv)
  - A labelling guidance document (animal_protection_law_guidance.docx)
  - A script that gathers judgment links (scrape_label.py)
